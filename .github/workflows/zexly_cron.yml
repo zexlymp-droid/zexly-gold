@@ -1,24 +1,24 @@
-name: ZEXLY Cloud Monitoring
+name: ZEXLY METHOD PRO V6.0
 
 on:
   schedule:
-    - cron: '*/15 * * * *' # Saya ubah jadi tiap 15 menit agar responsif
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 jobs:
-  build:
+  zexly-analysis:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4 # Update ke v4
-      - name: Set up Python
-        uses: actions/setup-python@v5 # Update ke v5
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - name: Install dependencies
+
+      - name: Install Dependencies
         run: pip install requests yfinance pytz
-      - name: Run ZEXLY Deep Analysis
-        env:
-          TELEGRAM_TOKEN: ${{ 8706271896:AAH6ZL3GJ-CarezdO-TapTJnnyZy6QZ4w2Y }}
-          TELEGRAM_CHAT_ID: ${{ 5801538218 }}
+
+      - name: Execute Zexly Oracle
         run: python zexly_oracle.py
