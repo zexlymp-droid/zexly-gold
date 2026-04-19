@@ -2,19 +2,19 @@ name: ZEXLY Cloud Monitoring
 
 on:
   schedule:
-    - cron: '0 * * * *' # Berjalan otomatis setiap 1 jam
-  workflow_dispatch: # Tombol manual untuk jalankan kapan saja
+    - cron: '*/15 * * * *' # Saya ubah jadi tiap 15 menit agar responsif
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4 # Update ke v4
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5 # Update ke v5
         with:
-          python-version: '3.9'
+          python-version: '3.10'
       - name: Install dependencies
         run: pip install requests yfinance pytz
       - name: Run ZEXLY Deep Analysis
@@ -22,4 +22,3 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python zexly_cloud.py
-
