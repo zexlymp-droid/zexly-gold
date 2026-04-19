@@ -19,6 +19,6 @@ jobs:
         run: pip install requests yfinance pytz
       - name: Run ZEXLY Deep Analysis
         env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_TOKEN: ${{ 8706271896:AAH6ZL3GJ-CarezdO-TapTJnnyZy6QZ4w2Y }}
+          TELEGRAM_CHAT_ID: ${{ 5801538218 }}
         run: python zexly_oracle.py
