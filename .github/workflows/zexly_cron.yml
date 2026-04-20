@@ -1,24 +1,21 @@
-name: ZEXLY METHOD PRO V6.0
+name: ZEXLY VISION CLOUD
 
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '*/5 * * * *' # Setiap 15 menit
   workflow_dispatch:
 
 jobs:
-  zexly-analysis:
+  run-zexly:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-
-      - name: Install Dependencies
+      - name: Install Libs
         run: pip install requests yfinance pytz
-
-      - name: Execute Zexly Oracle
-        run: python zexly_oracle.py
+      - name: Execute Vision
+        run: python zexly_vision.py
