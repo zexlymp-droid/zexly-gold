@@ -405,9 +405,9 @@ def detect_m1_trigger(df_m1: pd.DataFrame, bias: str) -> dict:
 #  SISTEM BINTANG (ZEMETHOD Bab 05)
 # ══════════════════════════════════════════════════════════════════
 
-def calc_star_rating(bias_h4: str, sd_base: dict | None,
+def calc_star_rating(bias_h4: str, sd_base,
                      sr_flip: dict, m1_trigger: dict,
-                     ch_m30: dict, price: float) -> tuple[int, list[str]]:
+                     ch_m30: dict, price: float):
     """
     4 kriteria bintang ZEMETHOD:
     ★1 — Searah bias H4
@@ -459,7 +459,7 @@ def calc_star_rating(bias_h4: str, sd_base: dict | None,
 #  SL / TP KALKULASI (ZEMETHOD Bab 06)
 # ══════════════════════════════════════════════════════════════════
 
-def calc_sl_tp(price: float, bias: str, sd_base: dict | None,
+def calc_sl_tp(price: float, bias: str, sd_base,
                sr_levels: list, ch_m30: dict) -> dict:
     """
     SL: di luar base + 5-7 pips buffer (total ~10-15 pips dari entry)
@@ -581,9 +581,9 @@ def send_startup_msg():
 
 def format_signal_msg(
     price: float, bias: str, stars: int, star_reasons: list,
-    sd_base: dict | None, m1_trigger: dict, sr_flip: dict,
-    sl_tp: dict, rsi_m15: float, session: str,
-    ch_h4: dict, ch_m30: dict
+    sd_base, m1_trigger: dict, sr_flip: dict,
+    sl_tp, rsi_m15, session,
+    ch_h4, ch_m30
 ) -> str:
 
     emoji_bias = "🔴 SELL" if bias == "SELL" else "🟢 BUY"
