@@ -1,21 +1,21 @@
-name: ZEXLY VISION CLOUD
+name: ZEXLY VISION PRO
 
 on:
   schedule:
-    - cron: '*/5 * * * *' # Setiap 15 menit
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 jobs:
-  run-zexly:
+  run-vision:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - name: Install Libs
-        run: pip install requests yfinance pytz
-      - name: Execute Vision
+      - name: Install Dependencies
+        run: |
+          pip install requests yfinance pytz playwright
+          playwright install chromium
+      - name: Run Script
         run: python zexly_vision.py
