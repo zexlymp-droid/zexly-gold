@@ -1,9 +1,9 @@
 """
-\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557
-\u2551   ZEXLY METHOD BOT \u2014 XAUUSD AUTO SCANNER        \u2551
-\u2551   Equidistant Channel + S&D + Price Action       \u2551
-\u2551   Sesuai ZEMETHOD Ebook (H4 \u2192 M30 \u2192 M5 \u2192 M1)   \u2551
-\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d
+╔══════════════════════════════════════════════════╗
+║   ZEXLY METHOD BOT — XAUUSD AUTO SCANNER        ║
+║   Equidistant Channel + S&D + Price Action       ║
+║   Sesuai ZEMETHOD Ebook (H4 → M30 → M5 → M1)   ║
+╚══════════════════════════════════════════════════╝
 
 INSTALL DEPENDENCIES:
     pip install python-telegram-bot yfinance numpy pandas pytz playwright python-dotenv
@@ -32,10 +32,10 @@ TOKEN   = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 WIB     = ZoneInfo("Asia/Jakarta")
 
-# \u2500\u2500\u2500 Interval scan (detik) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+# ─── Interval scan (detik) ─────────────────────────────────────
 SCAN_INTERVAL = 60   # scan tiap 1 menit
 
-# \u2500\u2500\u2500 State anti-spam \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+# ─── State anti-spam ───────────────────────────────────────────
 STATE_FILE = "zexly_state.json"
 
 logging.basicConfig(
@@ -45,9 +45,9 @@ logging.basicConfig(
 )
 log = logging.getLogger("ZEXLY")
 
-# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# ══════════════════════════════════════════════════════════════════
 #  UTILITAS STATE (anti-spam sinyal sama)
-# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# ══════════════════════════════════════════════════════════════════
 
 def load_state() -> dict:
     try:
@@ -69,34 +69,34 @@ def mark_alerted(signal_key: str):
     today = datetime.now(WIB).strftime("%Y-%m-%d")
     save_state({"date": today, "key": signal_key})
 
-# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# ══════════════════════════════════════════════════════════════════
 #  JAM TRADING CHECK (ZEMETHOD Bab 07)
-# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# ══════════════════════════════════════════════════════════════════
 
 def get_session_status() -> tuple[bool, str]:
     """
     Returns (boleh_trading, nama_sesi)
-    London Open  : 14:00\u201318:00 WIB \u2192 TERBAIK
-    New York     : 20:00\u201323:00 WIB \u2192 BAIK
-    NY-London OL : 19:00\u201320:00 WIB \u2192 HATI-HATI (scan tapi flag)
-    Asian        : sisanya \u2192 SKIP
+    London Open  : 14:00–18:00 WIB → TERBAIK
+    New York     : 20:00–23:00 WIB → BAIK
+    NY-London OL : 19:00–20:00 WIB → HATI-HATI (scan tapi flag)
+    Asian        : sisanya → SKIP
     """
     now_h = datetime.now(WIB).hour
     now_m = datetime.now(WIB).minute
     t = now_h * 60 + now_m
 
     if 14*60 <= t < 18*60:
-        return True, "\ud83c\uddec\ud83c\udde7 London Open (TERBAIK)"
+        return True, "🇬🇧 London Open (TERBAIK)"
     elif 20*60 <= t < 23*60:
-        return True, "\ud83c\uddfa\ud83c\uddf8 New York Session (BAIK)"
+        return True, "🇺🇸 New York Session (BAIK)"
     elif 19*60 <= t < 20*60:
-        return True, "\u26a0\ufe0f NY-London Overlap (HATI-HATI)"
+        return True, "⚠️ NY-London Overlap (HATI-HATI)"
     else:
-        return False, "\ud83d\ude34 Asian / Off-Session (SKIP)"
+        return False, "😴 Asian / Off-Session (SKIP)"
 
-# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# ══════════════════════════════════════════════════════════════════
 #  DATA FETCH
-# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# ══════════════════════════════════════════════════════════════════
 
 def fetch_data() -> dict | None:
     try:
@@ -117,14 +117,14 @@ def fetch_data() -> dict | None:
         log.error(f"Gagal fetch data: {e}")
         return None
 
-# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# ══════════════════════════════════════════════════════════════════
 #  EQUIDISTANT CHANNEL (ZEMETHOD Bab 01)
-# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# ══════════════════════════════════════════════════════════════════
 
 def calc_equidistant_channel(df: pd.DataFrame) -> dict:
     """
     Equidistant channel via linear regression pada close.
-    Upper = midline + 1.5*std (sepertiga atas \u2248 price > upper - std/3)
+    Upper = midline + 1.5*std (sepertiga atas ≈ price > upper - std/3)
     Lower = midline - 1.5*std
     """
     closes = df["Close"].values
@@ -155,10 +155,10 @@ def calc_equidistant_channel(df: pd.DataFrame) -> dict:
 
 def get_h4_bias(ch: dict, price: float) -> str:
     """
-    ZEMETHOD Bab 01 \u2014 3 Zona Channel
-    Upper Zone (sepertiga atas) \u2192 SELL ONLY
-    Lower Zone (sepertiga bawah) \u2192 BUY ONLY
-    Middle Zone \u2192 SKIP
+    ZEMETHOD Bab 01 — 3 Zona Channel
+    Upper Zone (sepertiga atas) → SELL ONLY
+    Lower Zone (sepertiga bawah) → BUY ONLY
+    Middle Zone → SKIP
     """
     if price >= ch["upper_third"]:
         return "SELL"
@@ -167,9 +167,9 @@ def get_h4_bias(ch: dict, price: float) -> str:
     else:
         return "SKIP"
 
-# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# ══════════════════════════════════════════════════════════════════
 #  RSI
-# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# ══════════════════════════════════════════════════════════════════
 
 def calc_rsi(series: pd.Series, period: int = 14) -> float:
     delta = series.diff()
@@ -179,15 +179,15 @@ def calc_rsi(series: pd.Series, period: int = 14) -> float:
     rsi   = 100 - (100 / (1 + rs))
     return round(float(rsi.iloc[-1]), 1)
 
-# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# ══════════════════════════════════════════════════════════════════
 #  SUPPLY & DEMAND BASE DETECTION (ZEMETHOD Bab 02)
-# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# ══════════════════════════════════════════════════════════════════
 
 def detect_sd_base(df: pd.DataFrame, bias: str) -> dict | None:
     """
     Cari pola RBR (bias BUY) atau DBD (bias SELL).
     Kriteria base valid:
-      - 2\u20135 candle di base
+      - 2–5 candle di base
       - Body candle base kecil (< 50% rata-rata body sebelumnya)
       - Move sebelum base kuat (candle momentum)
       - Base lebih kecil dari move
@@ -239,7 +239,7 @@ def detect_sd_base(df: pd.DataFrame, bias: str) -> dict | None:
             # Arah move sebelum base
             move_dir = "UP" if move_slice["Close"].iloc[-1] > move_slice["Close"].iloc[0] else "DOWN"
 
-            # RBR \u2192 bias BUY | DBD \u2192 bias SELL
+            # RBR → bias BUY | DBD → bias SELL
             if bias == "BUY"  and move_dir != "UP":   continue
             if bias == "SELL" and move_dir != "DOWN":  continue
 
@@ -260,9 +260,9 @@ def detect_sd_base(df: pd.DataFrame, bias: str) -> dict | None:
 
     return None
 
-# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# ══════════════════════════════════════════════════════════════════
 #  S&R LEVEL DETECTION (M30)
-# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# ══════════════════════════════════════════════════════════════════
 
 def find_sr_levels(df: pd.DataFrame, n_levels: int = 3) -> list[float]:
     """
@@ -295,9 +295,9 @@ def find_sr_levels(df: pd.DataFrame, n_levels: int = 3) -> list[float]:
     clustered.sort(key=lambda x: abs(x - price))
     return clustered[:n_levels]
 
-# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# ══════════════════════════════════════════════════════════════════
 #  S&R FLIP KONFIRMASI M5 (ZEMETHOD Bab 03)
-# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# ══════════════════════════════════════════════════════════════════
 
 def check_sr_flip_m5(df_m5: pd.DataFrame, sr_levels: list, bias: str) -> dict:
     """
@@ -332,9 +332,9 @@ def check_sr_flip_m5(df_m5: pd.DataFrame, sr_levels: list, bias: str) -> dict:
 
     return {"confirmed": False}
 
-# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# ══════════════════════════════════════════════════════════════════
 #  CANDLE TRIGGER M1 (ZEMETHOD Bab 03 & 04)
-# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# ══════════════════════════════════════════════════════════════════
 
 def detect_m1_trigger(df_m1: pd.DataFrame, bias: str) -> dict:
     """
@@ -359,7 +359,7 @@ def detect_m1_trigger(df_m1: pd.DataFrame, bias: str) -> dict:
     if range1 == 0:
         return {"found": False}
 
-    # \u2500\u2500\u2500 Bullish Engulfing \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    # ─── Bullish Engulfing ─────────────────────────
     if bias == "BUY":
         is_engulfing = (
             c1_close > o1 and          # candle hijau
@@ -379,7 +379,7 @@ def detect_m1_trigger(df_m1: pd.DataFrame, bias: str) -> dict:
         if is_pin_bar:
             return {"found": True, "type": "Bullish Pin Bar", "strength": "KUAT"}
 
-    # \u2500\u2500\u2500 Bearish Engulfing \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    # ─── Bearish Engulfing ─────────────────────────
     elif bias == "SELL":
         is_engulfing = (
             c1_close < o1 and
@@ -401,10 +401,359 @@ def detect_m1_trigger(df_m1: pd.DataFrame, bias: str) -> dict:
 
     return {"found": False}
 
-# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# ══════════════════════════════════════════════════════════════════
 #  SISTEM BINTANG (ZEMETHOD Bab 05)
-# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# ══════════════════════════════════════════════════════════════════
 
 def calc_star_rating(bias_h4: str, sd_base: dict | None,
                      sr_flip: dict, m1_trigger: dict,
-                     ch_m30: dict, price
+                     ch_m30: dict, price: float) -> tuple[int, list[str]]:
+    """
+    4 kriteria bintang ZEMETHOD:
+    ★1 — Searah bias H4
+    ★2 — Base valid di level S&R M30
+    ★3 — Candle M5 konfirmasi
+    ★4 — Candle trigger M1 jelas
+    """
+    stars = 0
+    reasons = []
+
+    # Bintang 1 — Bias H4
+    # (selalu 1 karena kita sudah filter bias SKIP di awal)
+    stars += 1
+    reasons.append(f"★ Setup searah bias H4 ({bias_h4})")
+
+    # Bintang 2 — Base di level S&R atau tepi channel
+    base_near_sr = False
+    if sd_base and sd_base.get("found"):
+        # Cek apakah base dekat tepi channel (upper/lower zone)
+        if bias_h4 == "BUY"  and abs(sd_base["base_low"] - ch_m30["lower"]) < 15:
+            base_near_sr = True
+        elif bias_h4 == "SELL" and abs(sd_base["base_high"] - ch_m30["upper"]) < 15:
+            base_near_sr = True
+        if base_near_sr or sd_base.get("found"):
+            stars += 1
+            reasons.append(f"★ Pola {sd_base['type']} valid ({sd_base['candles_in_base']} candle di base)")
+
+    # Bintang 3 — M5 konfirmasi (S&R flip atau price di zona channel)
+    if sr_flip.get("confirmed"):
+        stars += 1
+        reasons.append(f"★ M5 konfirmasi: {sr_flip['detail']}")
+    elif sd_base and sd_base.get("found"):
+        # Alternatif: harga sudah di dalam zona base
+        if bias_h4 == "BUY"  and price <= sd_base["base_high"]:
+            stars += 1
+            reasons.append("★ Harga masuk zona base RBR (konfirmasi M5)")
+        elif bias_h4 == "SELL" and price >= sd_base["base_low"]:
+            stars += 1
+            reasons.append("★ Harga masuk zona base DBD (konfirmasi M5)")
+
+    # Bintang 4 — Trigger M1
+    if m1_trigger.get("found"):
+        stars += 1
+        reasons.append(f"★ Trigger M1: {m1_trigger['type']} ({m1_trigger['strength']})")
+
+    return stars, reasons
+
+# ══════════════════════════════════════════════════════════════════
+#  SL / TP KALKULASI (ZEMETHOD Bab 06)
+# ══════════════════════════════════════════════════════════════════
+
+def calc_sl_tp(price: float, bias: str, sd_base: dict | None,
+               sr_levels: list, ch_m30: dict) -> dict:
+    """
+    SL: di luar base + 5-7 pips buffer (total ~10-15 pips dari entry)
+    TP1: S&R berikutnya
+    TP2: Tepi channel M30 seberang
+    RR minimum 1:1.5
+    """
+    buffer = 7.0  # pips
+
+    if bias == "BUY":
+        sl_base = sd_base["base_low"] if sd_base and sd_base.get("found") else price - 15
+        sl = round(sl_base - buffer, 2)
+        risk = abs(price - sl)
+
+        # TP1: level S&R di atas harga
+        tp1_candidates = [lv for lv in sr_levels if lv > price]
+        tp1 = round(min(tp1_candidates), 2) if tp1_candidates else round(price + risk * 1.5, 2)
+
+        # TP2: upper channel M30
+        tp2 = round(ch_m30["upper"], 2)
+
+    else:  # SELL
+        sl_base = sd_base["base_high"] if sd_base and sd_base.get("found") else price + 15
+        sl = round(sl_base + buffer, 2)
+        risk = abs(sl - price)
+
+        tp1_candidates = [lv for lv in sr_levels if lv < price]
+        tp1 = round(max(tp1_candidates), 2) if tp1_candidates else round(price - risk * 1.5, 2)
+
+        tp2 = round(ch_m30["lower"], 2)
+
+    rr1 = round(abs(tp1 - price) / risk, 2) if risk > 0 else 0
+    rr2 = round(abs(tp2 - price) / risk, 2) if risk > 0 else 0
+
+    return {
+        "sl": sl, "tp1": tp1, "tp2": tp2,
+        "risk_pips": round(risk, 1),
+        "rr1": rr1, "rr2": rr2
+    }
+
+# ══════════════════════════════════════════════════════════════════
+#  SCREENSHOT TRADINGVIEW (Playwright)
+# ══════════════════════════════════════════════════════════════════
+
+async def take_tv_screenshot(interval: str = "15") -> str | None:
+    """
+    Screenshot TradingView widget. Interval: 5=M5, 15=M15, 60=H1, 240=H4
+    """
+    url = (
+        f"https://s.tradingview.com/widgetembed/"
+        f"?symbol=OANDA:XAUUSD&interval={interval}"
+        f"&theme=dark&style=1&locale=id"
+        f"&toolbar_bg=%23131722&hide_top_toolbar=0"
+        f"&save_image=false"
+    )
+    path = f"zexly_chart_{interval}.png"
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            ctx = await browser.new_context(viewport={"width": 1280, "height": 720})
+            page = await ctx.new_page()
+            await page.goto(url, wait_until="networkidle", timeout=30000)
+            await asyncio.sleep(6)   # tunggu chart render
+            await page.screenshot(path=path, full_page=False)
+            await browser.close()
+        log.info(f"Screenshot M{interval} tersimpan: {path}")
+        return path
+    except Exception as e:
+        log.error(f"Screenshot gagal: {e}")
+        return None
+
+# ══════════════════════════════════════════════════════════════════
+#  KIRIM TELEGRAM
+# ══════════════════════════════════════════════════════════════════
+
+def send_telegram(caption: str, photo_path: str | None = None):
+    base = f"https://api.telegram.org/bot{TOKEN}"
+    try:
+        if photo_path and os.path.exists(photo_path):
+            with open(photo_path, "rb") as ph:
+                resp = requests.post(
+                    f"{base}/sendPhoto",
+                    data={"chat_id": CHAT_ID, "caption": caption,
+                          "parse_mode": "Markdown"},
+                    files={"photo": ph},
+                    timeout=20
+                )
+        else:
+            resp = requests.post(
+                f"{base}/sendMessage",
+                data={"chat_id": CHAT_ID, "text": caption,
+                      "parse_mode": "Markdown"},
+                timeout=20
+            )
+        resp.raise_for_status()
+        log.info("Pesan terkirim ke Telegram ✓")
+    except Exception as e:
+        log.error(f"Telegram error: {e}")
+
+def send_startup_msg():
+    waktu = datetime.now(WIB).strftime("%d %b %Y | %H:%M WIB")
+    msg = (
+        f"🦅 *ZEXLY METHOD BOT — AKTIF*\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"✅ Bot berhasil dinyalakan\n"
+        f"🕒 `{waktu}`\n"
+        f"⏱ Scan tiap `{SCAN_INTERVAL}` detik\n"
+        f"📊 Instrument: `XAUUSD`\n"
+        f"🔍 Metode: Equidistant Channel + S&D + PA\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"Bot akan scan otomatis selama jam London & New York (WIB).\n"
+        f"Sinyal dikirim jika minimal *3/4 bintang* ZEMETHOD terpenuhi."
+    )
+    send_telegram(msg)
+
+# ══════════════════════════════════════════════════════════════════
+#  FORMAT PESAN SINYAL
+# ══════════════════════════════════════════════════════════════════
+
+def format_signal_msg(
+    price: float, bias: str, stars: int, star_reasons: list,
+    sd_base: dict | None, m1_trigger: dict, sr_flip: dict,
+    sl_tp: dict, rsi_m15: float, session: str,
+    ch_h4: dict, ch_m30: dict
+) -> str:
+
+    emoji_bias = "🔴 SELL" if bias == "SELL" else "🟢 BUY"
+    stars_display = "★" * stars + "☆" * (4 - stars)
+    waktu = datetime.now(WIB).strftime("%d %b %Y | %H:%M WIB")
+
+    trigger_txt = f"`{m1_trigger['type']} ({m1_trigger['strength']})`" \
+                  if m1_trigger.get("found") else "`Belum muncul`"
+
+    flip_txt = f"`{sr_flip['detail']}`" if sr_flip.get("confirmed") else "`Belum flip`"
+
+    base_txt = (
+        f"`{sd_base['type']} — {sd_base['candles_in_base']} candle`\n"
+        f"   Zone: `{sd_base['base_low']} – {sd_base['base_high']}`"
+    ) if sd_base and sd_base.get("found") else "`Tidak terdeteksi`"
+
+    rsi_label = (
+        "⚠️ Overbought" if rsi_m15 >= 70 else
+        "🔶 Near OB"    if rsi_m15 >= 65 else
+        "⚠️ Oversold"   if rsi_m15 <= 30 else
+        "🔷 Near OS"    if rsi_m15 <= 35 else
+        "➖ Netral"
+    )
+
+    reasons_str = "\n".join([f"  {r}" for r in star_reasons])
+
+    msg = (
+        f"🦅 *ZEXLY METHOD — SINYAL ENTRY*\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"📍 *Instrument:* `XAUUSD`\n"
+        f"💰 *Price:* `${price}`\n"
+        f"⚡ *Signal:* {emoji_bias}\n"
+        f"⭐ *Kualitas:* `{stars_display}` ({stars}/4 bintang)\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"📊 *ANALISA ZEMETHOD*\n\n"
+        f"🏗️ *H4 Equidistant Channel*\n"
+        f"   Upper: `{ch_h4['upper']}` | Mid: `{ch_h4['mid']}` | Lower: `{ch_h4['lower']}`\n"
+        f"   Bias: *{bias} ONLY*\n\n"
+        f"📐 *M30 Channel*\n"
+        f"   Upper: `{ch_m30['upper']}` | Lower: `{ch_m30['lower']}`\n\n"
+        f"🎯 *S&D Base (M30)*\n"
+        f"   {base_txt}\n\n"
+        f"🔀 *S&R Flip M5*\n"
+        f"   {flip_txt}\n\n"
+        f"🕯️ *Trigger M1*\n"
+        f"   {trigger_txt}\n\n"
+        f"📈 *RSI M15:* `{rsi_m15}` — {rsi_label}\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"💼 *RENCANA TRADE*\n\n"
+        f"   Entry  : `${price}`\n"
+        f"   SL     : `${sl_tp['sl']}` ({sl_tp['risk_pips']} pips)\n"
+        f"   TP1    : `${sl_tp['tp1']}` (RR {sl_tp['rr1']}:1) → tutup 70%\n"
+        f"   TP2    : `${sl_tp['tp2']}` (RR {sl_tp['rr2']}:1) → sisa 30% (risk-free)\n\n"
+        f"   Setelah TP1 hit → geser SL ke breakeven!\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"✅ *ALASAN ENTRY*\n"
+        f"{reasons_str}\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"⏰ *Next Step:* Konfirmasi visual M1 sebelum klik entry!\n"
+        f"🕒 `{waktu}`\n"
+        f"📡 `{session}`"
+    )
+    return msg
+
+# ══════════════════════════════════════════════════════════════════
+#  MAIN SCAN LOOP
+# ══════════════════════════════════════════════════════════════════
+
+async def run_scan():
+    log.info("═══ ZEXLY SCAN ═══")
+
+    # 1. Cek jam trading (ZEMETHOD Bab 07)
+    ok_session, session_name = get_session_status()
+    if not ok_session:
+        log.info(f"Off-session: {session_name}. Skip scan.")
+        return
+
+    # 2. Ambil data
+    data = fetch_data()
+    if not data:
+        return
+
+    df_h4, df_m30 = data["h4"], data["m30"]
+    df_m5, df_m1  = data["m5"], data["m1"]
+
+    price = round(float(df_m1["Close"].iloc[-1]), 2)
+
+    # 3. H4 Channel & Bias (Bab 01)
+    ch_h4  = calc_equidistant_channel(df_h4)
+    ch_m30 = calc_equidistant_channel(df_m30)
+    bias   = get_h4_bias(ch_h4, price)
+
+    log.info(f"Price: {price} | H4 Bias: {bias} | "
+             f"Upper: {ch_h4['upper']} | Lower: {ch_h4['lower']}")
+
+    if bias == "SKIP":
+        log.info("Middle zone — SKIP (ZEMETHOD Bab 01: tidak trading di middle zone)")
+        return
+
+    # 4. RSI M15
+    rsi_m15 = calc_rsi(df_m30["Close"])
+
+    # 5. S&D Base (Bab 02)
+    sd_base = detect_sd_base(df_m30, bias)
+
+    # 6. S&R Levels & Flip M5 (Bab 03)
+    sr_levels = find_sr_levels(df_m30)
+    sr_flip   = check_sr_flip_m5(df_m5, sr_levels, bias)
+
+    # 7. Trigger M1 (Bab 04)
+    m1_trigger = detect_m1_trigger(df_m1, bias)
+
+    # 8. Sistem Bintang (Bab 05)
+    stars, star_reasons = calc_star_rating(
+        bias, sd_base, sr_flip, m1_trigger, ch_m30, price
+    )
+
+    log.info(f"Stars: {stars}/4 | Base: {sd_base} | Trigger: {m1_trigger}")
+
+    # 9. Minimal 3/4 bintang untuk entry (ZEMETHOD Bab 05)
+    if stars < 3:
+        log.info(f"Bintang {stars}/4 — belum cukup untuk entry. Skip alert.")
+        return
+
+    # 10. Anti-spam: cek apakah sinyal ini sudah dikirim
+    signal_key = f"{bias}_{round(price, 0)}_{stars}"
+    if already_alerted(signal_key):
+        log.info("Sinyal sama sudah dikirim. Skip.")
+        return
+
+    # 11. SL/TP (Bab 06)
+    sl_tp = calc_sl_tp(price, bias, sd_base, sr_levels, ch_m30)
+
+    # Validasi RR minimum 1:1.5
+    if sl_tp["rr1"] < 1.5:
+        log.info(f"RR {sl_tp['rr1']} < 1.5 minimum. Skip.")
+        return
+
+    # 12. Format pesan
+    caption = format_signal_msg(
+        price, bias, stars, star_reasons,
+        sd_base, m1_trigger, sr_flip,
+        sl_tp, rsi_m15, session_name,
+        ch_h4, ch_m30
+    )
+
+    # 13. Screenshot TradingView M5
+    log.info("Ambil screenshot TradingView...")
+    screenshot = await take_tv_screenshot(interval="5")
+
+    # 14. Kirim ke Telegram
+    send_telegram(caption, screenshot)
+    mark_alerted(signal_key)
+    log.info(f"✅ Sinyal {bias} {stars}★ terkirim!")
+
+
+async def main():
+    log.info("🦅 ZEXLY METHOD BOT STARTING...")
+    send_startup_msg()
+
+    while True:
+        try:
+            await run_scan()
+        except Exception as e:
+            log.error(f"Error di run_scan: {e}", exc_info=True)
+
+        log.info(f"Tunggu {SCAN_INTERVAL}s untuk scan berikutnya...")
+        await asyncio.sleep(SCAN_INTERVAL)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
