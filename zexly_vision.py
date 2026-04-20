@@ -13,30 +13,36 @@ async def take_screenshot():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
-        # Buka Chart TradingView XAUUSD
-        await page.goto("https://www.tradingview.com/chart/?symbol=FX_IDC:XAUUSD", wait_until="networkidle")
-        # Tunggu 10 detik agar chart benar-benar loading
-        await asyncio.sleep(10)
+        # Menggunakan widget TradingView yang lebih stabil untuk screenshot
+        url = "https://s.tradingview.com/widgetembed/?symbol=FX_IDC:XAUUSD&interval=240&theme=dark"
+        await page.goto(url, wait_until="networkidle")
+        await asyncio.sleep(5)
         await page.screenshot(path="chart.png")
         await browser.close()
 
 def get_data_and_send():
     gold = yf.Ticker("GC=F")
-    df = gold.history(period="5d", interval="1h")
+    df = gold.history(period="10d", interval="1h")
     price = round(df['Close'].iloc[-1], 2)
     
-    # [span_0](start_span)Hitung Zona Zexly[span_0](end_span)
+    # Aturan ZEXLY: Pembagian Sepertiga Channel (Halaman 5 Ebook)
     high_h4 = df['High'].max()
     low_h4 = df['Low'].min()
     range_total = high_h4 - low_h4
     one_third = range_total / 3
     
-    if price >= (high_h4 - one_third):
-        [span_1](start_span)[span_2](start_span)status, note = "🔴 UPPER ZONE", "SELL ONLY. Cari base valid di M30/M15[span_1](end_span)[span_2](end_span)."
-    elif price <= (low_h4 + one_third):
-        status, note = "🔵 LOWER ZONE", "BUY ONLY. [span_3](start_span)[span_4](start_span)Cari base valid di M30/M15[span_3](end_span)[span_4](end_span)."
+    upper_zone_start = high_h4 - one_third
+    lower_zone_end = low_h4 + one_third
+    
+    if price >= upper_zone_start:
+        status = "🔴 UPPER ZONE"
+        note = "SELL ONLY. Harga di area resistance bias turun."
+    elif price <= lower_zone_end:
+        status = "🔵 LOWER ZONE"
+        note = "BUY ONLY. Harga di area support bias naik."
     else:
-        status, note = "🟡 MIDDLE ZONE", "TIDAK TRADING. [span_5](start_span)[span_6](start_span)Area noise, tidak ada edge yang jelas[span_5](end_span)[span_6](end_span)."
+        status = "🟡 MIDDLE ZONE"
+        note = "TIDAK TRADING. Area noise, tidak ada edge yang jelas."
 
     wib = pytz.timezone('Asia/Jakarta')
     waktu = datetime.now(wib).strftime('%H:%M WIB')
@@ -58,5 +64,8 @@ def get_data_and_send():
         requests.post(url, data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "Markdown"}, files={"photo": photo})
 
 if __name__ == "__main__":
-    asyncio.run(take_screenshot())
-    get_data_and_send()
+    try:
+        asyncio.run(take_screenshot())
+        get_data_and_send()
+    except Exception as e:
+        print(f"Error detected: {e}")
