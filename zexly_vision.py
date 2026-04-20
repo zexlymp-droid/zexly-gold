@@ -16,7 +16,7 @@ FILE .env (WAJIB ADA DI FOLDER YANG SAMA):
 
 import os, asyncio, logging, json
 from datetime import datetime, time as dtime
-from zoneinfo import ZoneInfo
+import pytz
 
 import numpy as np
 import pandas as pd
@@ -30,7 +30,7 @@ load_dotenv()
 
 TOKEN   = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-WIB     = ZoneInfo("Asia/Jakarta")
+WIB = pytz.timezone("Asia/Jakarta")
 
 # ─── Interval scan (detik) ─────────────────────────────────────
 SCAN_INTERVAL = 60   # scan tiap 1 menit
@@ -62,11 +62,11 @@ def save_state(state: dict):
 
 def already_alerted(signal_key: str):
     state = load_state()
-    today = datetime.now(WIB).strftime("%Y-%m-%d")
+    today = datetime.now(pytz.utc).astimezone(WIB).strftime("%Y-%m-%d")
     return state.get("date") == today and state.get("key") == signal_key
 
 def mark_alerted(signal_key: str):
-    today = datetime.now(WIB).strftime("%Y-%m-%d")
+    today = datetime.now(pytz.utc).astimezone(WIB).strftime("%Y-%m-%d")
     save_state({"date": today, "key": signal_key})
 
 # ══════════════════════════════════════════════════════════════════
@@ -81,8 +81,8 @@ def get_session_status() -> tuple[bool, str]:
     NY-London OL : 19:00–20:00 WIB → HATI-HATI (scan tapi flag)
     Asian        : sisanya → SKIP
     """
-    now_h = datetime.now(WIB).hour
-    now_m = datetime.now(WIB).minute
+    now_h = datetime.now(pytz.utc).astimezone(WIB).hour
+    now_m = datetime.now(pytz.utc).astimezone(WIB).minute
     t = now_h * 60 + now_m
 
     if 14*60 <= t < 18*60:
@@ -560,7 +560,7 @@ def send_telegram(caption: str, photo_path: str = None):
         log.error(f"Telegram error: {e}")
 
 def send_startup_msg():
-    waktu = datetime.now(WIB).strftime("%d %b %Y | %H:%M WIB")
+    waktu = datetime.now(pytz.utc).astimezone(WIB).strftime("%d %b %Y | %H:%M WIB")
     msg = (
         f"🦅 *ZEXLY METHOD BOT — AKTIF*\n"
         f"━━━━━━━━━━━━━━━━━━\n"
@@ -588,7 +588,7 @@ def format_signal_msg(
 
     emoji_bias = "🔴 SELL" if bias == "SELL" else "🟢 BUY"
     stars_display = "★" * stars + "☆" * (4 - stars)
-    waktu = datetime.now(WIB).strftime("%d %b %Y | %H:%M WIB")
+    waktu = datetime.now(pytz.utc).astimezone(WIB).strftime("%d %b %Y | %H:%M WIB")
 
     trigger_txt = f"`{m1_trigger['type']} ({m1_trigger['strength']})`" \
                   if m1_trigger.get("found") else "`Belum muncul`"
