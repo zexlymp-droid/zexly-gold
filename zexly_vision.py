@@ -5,67 +5,95 @@ import pytz
 import asyncio
 from playwright.async_api import async_playwright
 
-# KONFIGURASI
+# CONFIG
 TOKEN = "8706271896:AAH6ZL3GJ-CarezdO-TapTJnnyZy6QZ4w2Y"
 CHAT_ID = "5801538218"
 
-async def take_screenshot():
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
-        # Menggunakan widget TradingView yang lebih stabil untuk screenshot
-        url = "https://s.tradingview.com/widgetembed/?symbol=FX_IDC:XAUUSD&interval=240&theme=dark"
-        await page.goto(url, wait_until="networkidle")
-        await asyncio.sleep(5)
-        await page.screenshot(path="chart.png")
-        await browser.close()
-
-def get_data_and_send():
+async def generate_zexly_analysis():
+    # 1. Ambil Data Teknis
     gold = yf.Ticker("GC=F")
-    df = gold.history(period="10d", interval="1h")
-    price = round(df['Close'].iloc[-1], 2)
+    df = gold.history(period="5d", interval="15m")
+    current_price = round(df['Close'].iloc[-1], 2)
     
-    # Aturan ZEXLY: Pembagian Sepertiga Channel (Halaman 5 Ebook)
-    high_h4 = df['High'].max()
-    low_h4 = df['Low'].min()
-    range_total = high_h4 - low_h4
-    one_third = range_total / 3
+    # Hitung SnR Sederhana (High/Low Terdekat)
+    res_level = round(df['High'].tail(20).max(), 2)
+    sup_level = round(df['Low'].tail(20).min(), 2)
     
-    upper_zone_start = high_h4 - one_third
-    lower_zone_end = low_h4 + one_third
+    # 2. Logic Multi-Timeframe & Bintang (Ebook Bab 05)
+    # Cek Kondisi Momentum untuk Sinyal (Bukan Timer)
+    momentum_detected = False
+    stars = 1 # Start with 1 star for monitoring
     
-    if price >= upper_zone_start:
-        status = "🔴 UPPER ZONE"
-        note = "SELL ONLY. Harga di area resistance bias turun."
-    elif price <= lower_zone_end:
-        status = "🔵 LOWER ZONE"
-        note = "BUY ONLY. Harga di area support bias naik."
+    if current_price >= res_level - 1: # Dekat Resistance
+        stars += 1
+        action = "SELL"
+    elif current_price <= sup_level + 1: # Dekat Support
+        stars += 1
+        action = "BUY"
     else:
-        status = "🟡 MIDDLE ZONE"
-        note = "TIDAK TRADING. Area noise, tidak ada edge yang jelas."
+        action = "MONITORING"
 
-    wib = pytz.timezone('Asia/Jakarta')
-    waktu = datetime.now(wib).strftime('%H:%M WIB')
-    
-    caption = (
-        f"🦅 *ZEXLY VISION MONITOR*\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"💰 *Gold Price:* `${price}`\n"
-        f"📍 *H4 Status:* `{status}`\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"📝 *Zexly Note:* \n_{note}_\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"🕒 `{waktu}` | *Native Browser Analysis*"
-    )
-    
-    # Kirim ke Telegram
-    url = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
-    with open("chart.png", "rb") as photo:
-        requests.post(url, data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "Markdown"}, files={"photo": photo})
+    # Hanya kirim jika 3 Bintang atau lebih (Ada rejection/close konfirmasi)
+    # Untuk simulasi, kita set True agar kamu bisa lihat hasilnya dulu
+    momentum_detected = True 
+
+    if momentum_detected:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            # Buka Chart M5 untuk Scalping
+            url = f"https://s.tradingview.com/widgetembed/?symbol=FX_IDC:XAUUSD&interval=5&theme=dark"
+            await page.goto(url, wait_until="networkidle")
+            await asyncio.sleep(5)
+            
+            # INJEKSI JAVASCRIPT: Menggambar Garis SnR di Chart
+            await page.evaluate(f"""
+                const style = document.createElement('style');
+                style.innerHTML = `
+                    .zexly-line {{
+                        position: absolute; left: 0; width: 100%; height: 2px;
+                        background: rgba(255, 0, 0, 0.5); z-index: 999;
+                        border-top: 1px dashed white;
+                    }}
+                    .zexly-label {{
+                        position: absolute; right: 10px; color: white; 
+                        font-size: 12px; background: black; padding: 2px 5px;
+                    }}
+                `;
+                document.head.appendChild(style);
+                
+                // Gambar Resistance Line (Simulasi Visual)
+                const resLine = document.createElement('div');
+                resLine.className = 'zexly-line';
+                resLine.style.top = '30%'; // Menyesuaikan posisi visual
+                resLine.innerHTML = '<span class="zexly-label">ZEXLY RESISTANCE: {res_level}</span>';
+                document.body.appendChild(resLine);
+            """)
+            
+            await page.screenshot(path="zexly_analysis.png")
+            await browser.close()
+
+        # Susun Pesan sesuai Strategi Bintang
+        wib = pytz.timezone('Asia/Jakarta')
+        waktu = datetime.now(wib).strftime('%H:%M WIB')
+        
+        caption = (
+            f"🦅 *ZEXLY SCALPER SIGNAL (M5/M1)*\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"⚡ *Momentum:* `{action} AREA`\n"
+            f"💰 *Current:* `${current_price}`\n"
+            f"🎯 *Target Zone:* `{res_level if action == 'SELL' else sup_level}`\n"
+            f"⭐ *Quality:* `{stars}/4 Stars`\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"📝 *Note:* Tunggu rejection candle M1 untuk eksekusi!\n"
+            f"🕒 `{waktu}`"
+        )
+        
+        # Kirim ke Telegram
+        files = {'photo': open("zexly_analysis.png", "rb")}
+        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", 
+                      data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "Markdown"}, 
+                      files=files)
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(take_screenshot())
-        get_data_and_send()
-    except Exception as e:
-        print(f"Error detected: {e}")
+    asyncio.run(generate_zexly_analysis())
