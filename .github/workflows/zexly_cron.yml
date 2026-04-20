@@ -17,7 +17,7 @@ jobs:
       
       - name: Install Dependencies
         run: |
-          pip install requests yfinance pytz playwright numpy pandas python-dotenv
+          pip install requests yfinance pytz playwright numpy pandas python-dotenv tzdata
           playwright install chromium
       
       - name: Run Script
