@@ -49,7 +49,7 @@ log = logging.getLogger("ZEXLY")
 #  UTILITAS STATE (anti-spam sinyal sama)
 # ══════════════════════════════════════════════════════════════════
 
-def load_state() -> dict:
+def load_state():
     try:
         with open(STATE_FILE) as f:
             return json.load(f)
@@ -60,7 +60,7 @@ def save_state(state: dict):
     with open(STATE_FILE, "w") as f:
         json.dump(state, f)
 
-def already_alerted(signal_key: str) -> bool:
+def already_alerted(signal_key: str):
     state = load_state()
     today = datetime.now(WIB).strftime("%Y-%m-%d")
     return state.get("date") == today and state.get("key") == signal_key
@@ -98,7 +98,7 @@ def get_session_status() -> tuple[bool, str]:
 #  DATA FETCH
 # ══════════════════════════════════════════════════════════════════
 
-def fetch_data() -> dict | None:
+def fetch_data():
     try:
         gold = yf.Ticker("GC=F")
         df_h4  = gold.history(period="2mo",  interval="1h")   # H4 approx via 1h
@@ -121,7 +121,7 @@ def fetch_data() -> dict | None:
 #  EQUIDISTANT CHANNEL (ZEMETHOD Bab 01)
 # ══════════════════════════════════════════════════════════════════
 
-def calc_equidistant_channel(df: pd.DataFrame) -> dict:
+def calc_equidistant_channel(df: pd.DataFrame):
     """
     Equidistant channel via linear regression pada close.
     Upper = midline + 1.5*std (sepertiga atas ≈ price > upper - std/3)
@@ -153,7 +153,7 @@ def calc_equidistant_channel(df: pd.DataFrame) -> dict:
         "lower_third": round(lower_third, 2),   # batas masuk Lower Zone
     }
 
-def get_h4_bias(ch: dict, price: float) -> str:
+def get_h4_bias(ch: dict, price: float):
     """
     ZEMETHOD Bab 01 — 3 Zona Channel
     Upper Zone (sepertiga atas) → SELL ONLY
@@ -171,7 +171,7 @@ def get_h4_bias(ch: dict, price: float) -> str:
 #  RSI
 # ══════════════════════════════════════════════════════════════════
 
-def calc_rsi(series: pd.Series, period: int = 14) -> float:
+def calc_rsi(series: pd.Series, period: int = 14):
     delta = series.diff()
     gain  = delta.clip(lower=0).rolling(period).mean()
     loss  = (-delta.clip(upper=0)).rolling(period).mean()
@@ -183,7 +183,7 @@ def calc_rsi(series: pd.Series, period: int = 14) -> float:
 #  SUPPLY & DEMAND BASE DETECTION (ZEMETHOD Bab 02)
 # ══════════════════════════════════════════════════════════════════
 
-def detect_sd_base(df: pd.DataFrame, bias: str) -> dict | None:
+def detect_sd_base(df: pd.DataFrame, bias: str):
     """
     Cari pola RBR (bias BUY) atau DBD (bias SELL).
     Kriteria base valid:
@@ -264,7 +264,7 @@ def detect_sd_base(df: pd.DataFrame, bias: str) -> dict | None:
 #  S&R LEVEL DETECTION (M30)
 # ══════════════════════════════════════════════════════════════════
 
-def find_sr_levels(df: pd.DataFrame, n_levels: int = 3) -> list[float]:
+def find_sr_levels(df: pd.DataFrame, n_levels: int = 3):
     """
     Cari max 3 level S&R terkuat dari swing high/low M30.
     """
@@ -299,7 +299,7 @@ def find_sr_levels(df: pd.DataFrame, n_levels: int = 3) -> list[float]:
 #  S&R FLIP KONFIRMASI M5 (ZEMETHOD Bab 03)
 # ══════════════════════════════════════════════════════════════════
 
-def check_sr_flip_m5(df_m5: pd.DataFrame, sr_levels: list, bias: str) -> dict:
+def check_sr_flip_m5(df_m5: pd.DataFrame, sr_levels: list, bias: str):
     """
     Cek apakah candle M5 terakhir sudah close melewati S&R level
     dan harga sedang retest level tersebut.
@@ -336,7 +336,7 @@ def check_sr_flip_m5(df_m5: pd.DataFrame, sr_levels: list, bias: str) -> dict:
 #  CANDLE TRIGGER M1 (ZEMETHOD Bab 03 & 04)
 # ══════════════════════════════════════════════════════════════════
 
-def detect_m1_trigger(df_m1: pd.DataFrame, bias: str) -> dict:
+def detect_m1_trigger(df_m1: pd.DataFrame, bias: str):
     """
     Deteksi Engulfing atau Pin Bar di M1 (candle terakhir yang sudah close).
     Gunakan candle index -2 (sudah close), bukan -1 (masih berjalan).
@@ -460,7 +460,7 @@ def calc_star_rating(bias_h4: str, sd_base,
 # ══════════════════════════════════════════════════════════════════
 
 def calc_sl_tp(price: float, bias: str, sd_base,
-               sr_levels: list, ch_m30: dict) -> dict:
+               sr_levels: list, ch_m30: dict):
     """
     SL: di luar base + 5-7 pips buffer (total ~10-15 pips dari entry)
     TP1: S&R berikutnya
@@ -504,7 +504,7 @@ def calc_sl_tp(price: float, bias: str, sd_base,
 #  SCREENSHOT TRADINGVIEW (Playwright)
 # ══════════════════════════════════════════════════════════════════
 
-async def take_tv_screenshot(interval: str = "15") -> str | None:
+async def take_tv_screenshot(interval: str = "15") -> str:
     """
     Screenshot TradingView widget. Interval: 5=M5, 15=M15, 60=H1, 240=H4
     """
@@ -535,7 +535,7 @@ async def take_tv_screenshot(interval: str = "15") -> str | None:
 #  KIRIM TELEGRAM
 # ══════════════════════════════════════════════════════════════════
 
-def send_telegram(caption: str, photo_path: str | None = None):
+def send_telegram(caption: str, photo_path: str = None):
     base = f"https://api.telegram.org/bot{TOKEN}"
     try:
         if photo_path and os.path.exists(photo_path):
@@ -584,7 +584,7 @@ def format_signal_msg(
     sd_base, m1_trigger: dict, sr_flip: dict,
     sl_tp, rsi_m15, session,
     ch_h4, ch_m30
-) -> str:
+):
 
     emoji_bias = "🔴 SELL" if bias == "SELL" else "🟢 BUY"
     stars_display = "★" * stars + "☆" * (4 - stars)
