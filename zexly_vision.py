@@ -739,21 +739,5 @@ async def run_scan():
     mark_alerted(signal_key)
     log.info(f"✅ Sinyal {bias} {stars}★ terkirim!")
 
-
-async def main():
-    log.info("🦅 ZEXLY METHOD BOT STARTING...")
-    send_startup_msg()
-
-    while True:
-        try:
-            await run_scan()
-        except Exception as e:
-            log.error(f"Error di run_scan: {e}", exc_info=True)
-
-        log.info(f"Tunggu {SCAN_INTERVAL}s untuk scan berikutnya...")
-        await asyncio.sleep(SCAN_INTERVAL)
-
-
 if __name__ == "__main__":
-    asyncio.run(main())
-
+    asyncio.run(run_scan())
