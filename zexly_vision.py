@@ -85,7 +85,7 @@ def get_session_status() -> tuple[bool, str]:
     now_m = datetime.now(pytz.utc).astimezone(WIB).minute
     t = now_h * 60 + now_m
 
-    if 14*60 <= t < 18*60:
+    if 14*60 <= t < 19*60:
         return True, "🇬🇧 London Open (TERBAIK)"
     elif 20*60 <= t < 23*60:
         return True, "🇺🇸 New York Session (BAIK)"
