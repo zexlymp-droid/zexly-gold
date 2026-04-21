@@ -29,7 +29,7 @@ from playwright.async_api import async_playwright
 load_dotenv()
 
 TOKEN   = os.getenv("TELEGRAM_TOKEN")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "-1003986432270")
 WIB = pytz.timezone("Asia/Jakarta")
 
 # ─── Interval scan (detik) ─────────────────────────────────────
@@ -659,12 +659,10 @@ async def run_scan():
     ok_session, session_name = get_session_status()
     if not ok_session:
         log.info(f"Off-session: {session_name}. Skip scan.")
-        return
 
     # 2. Ambil data
     data = fetch_data()
     if not data:
-        return
 
     df_h4, df_m30 = data["h4"], data["m30"]
     df_m5, df_m1  = data["m5"], data["m1"]
@@ -681,7 +679,6 @@ async def run_scan():
 
     if bias == "SKIP":
         log.info("Middle zone — SKIP (ZEMETHOD Bab 01: tidak trading di middle zone)")
-        return
 
     # 4. RSI M15
     rsi_m15 = calc_rsi(df_m30["Close"])
@@ -706,21 +703,15 @@ async def run_scan():
     # 9. Minimal 3/4 bintang untuk entry (ZEMETHOD Bab 05)
     if stars < 3:
         log.info(f"Bintang {stars}/4 — belum cukup untuk entry. Skip alert.")
-        return
 
     # 10. Anti-spam: cek apakah sinyal ini sudah dikirim
     signal_key = f"{bias}_{round(price, 0)}_{stars}"
     if already_alerted(signal_key):
         log.info("Sinyal sama sudah dikirim. Skip.")
-        return
 
     # 11. SL/TP (Bab 06)
     sl_tp = calc_sl_tp(price, bias, sd_base, sr_levels, ch_m30)
 
-    # Validasi RR minimum 1:1.5
-    if sl_tp["rr1"] < 1.5:
-        log.info(f"RR {sl_tp['rr1']} < 1.5 minimum. Skip.")
-        return
 
     # 12. Format pesan
     caption = format_signal_msg(
