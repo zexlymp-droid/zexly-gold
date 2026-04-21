@@ -501,34 +501,163 @@ def calc_sl_tp(price: float, bias: str, sd_base,
     }
 
 # ══════════════════════════════════════════════════════════════════
-#  SCREENSHOT TRADINGVIEW (Playwright)
+#  GENERATE CHART MATPLOTLIB (ZEMETHOD ANNOTATED)
 # ══════════════════════════════════════════════════════════════════
 
-async def take_tv_screenshot(interval: str = "15") -> str:
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib.lines import Line2D
+
+async def take_tv_screenshot(interval: str = "5", context: dict = None):
     """
-    Screenshot TradingView widget. Interval: 5=M5, 15=M15, 60=H1, 240=H4
+    Generate chart XAUUSD dengan anotasi ZEMETHOD:
+    - Equidistant Channel H4
+    - S&D Base zone
+    - S&R levels
+    - Entry area highlight
+    - Harga sekarang
     """
-    url = (
-        f"https://s.tradingview.com/widgetembed/"
-        f"?symbol=OANDA:XAUUSD&interval={interval}"
-        f"&theme=dark&style=1&locale=id"
-        f"&toolbar_bg=%23131722&hide_top_toolbar=0"
-        f"&save_image=false"
-    )
-    path = f"zexly_chart_{interval}.png"
+    path = "zexly_chart_annotated.png"
     try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            ctx = await browser.new_context(viewport={"width": 1280, "height": 720})
-            page = await ctx.new_page()
-            await page.goto(url, wait_until="networkidle", timeout=30000)
-            await asyncio.sleep(6)   # tunggu chart render
-            await page.screenshot(path=path, full_page=False)
-            await browser.close()
-        log.info(f"Screenshot M{interval} tersimpan: {path}")
+        gold = yf.Ticker("GC=F")
+        # Pakai M30 untuk chart utama
+        df = gold.history(period="5d", interval="30m")
+        df.dropna(inplace=True)
+
+        if df.empty:
+            return None
+
+        # Ambil context dari parameter (channel, base, sr, price, bias)
+        ch_h4   = context.get("ch_h4")   if context else None
+        ch_m30  = context.get("ch_m30")  if context else None
+        sd_base = context.get("sd_base") if context else None
+        sr_lvls = context.get("sr_lvls") if context else []
+        price   = context.get("price")   if context else float(df["Close"].iloc[-1])
+        bias    = context.get("bias")    if context else "SKIP"
+        stars   = context.get("stars")   if context else 0
+
+        closes = df["Close"].values
+        highs  = df["High"].values
+        lows   = df["Low"].values
+        x      = np.arange(len(closes))
+
+        # ─── Setup Figure ───────────────────────────────
+        fig, ax = plt.subplots(figsize=(14, 7), facecolor="#131722")
+        ax.set_facecolor("#131722")
+
+        # ─── Candlestick (simplified: bar chart) ────────
+        for i in range(len(closes)):
+            color = "#26a69a" if closes[i] >= df["Open"].values[i] else "#ef5350"
+            ax.plot([i, i], [lows[i], highs[i]], color=color, linewidth=0.8, alpha=0.7)
+            body_bot = min(closes[i], df["Open"].values[i])
+            body_top = max(closes[i], df["Open"].values[i])
+            ax.bar(i, body_top - body_bot, bottom=body_bot,
+                   color=color, width=0.6, alpha=0.9)
+
+        # ─── Channel H4 ─────────────────────────────────
+        if ch_h4:
+            ax.axhline(ch_h4["upper"], color="#FF4C4C", linewidth=1.5,
+                       linestyle="-", label=f"H4 Upper {ch_h4['upper']}", zorder=3)
+            ax.axhline(ch_h4["mid"],   color="#ffffff", linewidth=1,
+                       linestyle="--", alpha=0.5, label=f"H4 Mid {ch_h4['mid']}", zorder=3)
+            ax.axhline(ch_h4["lower"], color="#00C853", linewidth=1.5,
+                       linestyle="-", label=f"H4 Lower {ch_h4['lower']}", zorder=3)
+            ax.axhline(ch_h4["upper_third"], color="#FF4C4C", linewidth=0.8,
+                       linestyle=":", alpha=0.5, label="Upper Zone Boundary")
+            ax.axhline(ch_h4["lower_third"], color="#00C853", linewidth=0.8,
+                       linestyle=":", alpha=0.5, label="Lower Zone Boundary")
+            # Fill zones
+            ymin, ymax = ax.get_ylim()
+            ax.axhspan(ch_h4["upper_third"], ch_h4["upper"],
+                       alpha=0.06, color="red", zorder=1)
+            ax.axhspan(ch_h4["lower"], ch_h4["lower_third"],
+                       alpha=0.06, color="green", zorder=1)
+
+        # ─── M30 Channel ────────────────────────────────
+        if ch_m30:
+            ax.axhline(ch_m30["upper"], color="#FF8C00", linewidth=1,
+                       linestyle="-.", alpha=0.7, label=f"M30 Upper {ch_m30['upper']}")
+            ax.axhline(ch_m30["lower"], color="#1E90FF", linewidth=1,
+                       linestyle="-.", alpha=0.7, label=f"M30 Lower {ch_m30['lower']}")
+
+        # ─── S&D Base Zone ───────────────────────────────
+        if sd_base and sd_base.get("found"):
+            base_color = "#00C853" if bias == "BUY" else "#FF4C4C"
+            ax.axhspan(sd_base["base_low"], sd_base["base_high"],
+                       alpha=0.15, color=base_color, zorder=2)
+            ax.axhline(sd_base["base_high"], color=base_color,
+                       linewidth=1, linestyle="--", alpha=0.8)
+            ax.axhline(sd_base["base_low"], color=base_color,
+                       linewidth=1, linestyle="--", alpha=0.8)
+            mid_x = len(closes) - 5
+            ax.text(mid_x, sd_base["base_mid"],
+                    f"  {sd_base['type']} ZONE", color=base_color,
+                    fontsize=8, fontweight="bold", va="center")
+
+        # ─── S&R Levels ──────────────────────────────────
+        for lvl in sr_lvls:
+            ax.axhline(lvl, color="#FFD700", linewidth=0.8,
+                       linestyle=":", alpha=0.7)
+            ax.text(len(closes) - 1, lvl, f" S&R {lvl}",
+                    color="#FFD700", fontsize=7, va="bottom")
+
+        # ─── Harga Sekarang ──────────────────────────────
+        ax.axhline(price, color="#FFD700", linewidth=2,
+                   linestyle="-", zorder=5, label=f"Price ${price}")
+        ax.text(len(closes) - 1, price, f" ${price}",
+                color="#FFD700", fontsize=9, fontweight="bold", va="bottom")
+
+        # ─── Entry Arrow ─────────────────────────────────
+        if bias in ("BUY", "SELL") and stars >= 3:
+            arrow_y = price
+            dy = 15 if bias == "BUY" else -15
+            arrow_color = "#00C853" if bias == "BUY" else "#FF4C4C"
+            ax.annotate(
+                f"  {'▲ BUY' if bias == 'BUY' else '▼ SELL'}
+  {stars}★",
+                xy=(len(closes) - 3, arrow_y),
+                xytext=(len(closes) - 8, arrow_y + dy * 2),
+                arrowprops=dict(arrowstyle="->", color=arrow_color, lw=2),
+                color=arrow_color, fontsize=10, fontweight="bold"
+            )
+
+        # ─── Labels & Title ──────────────────────────────
+        bias_emoji = {"BUY": "🟢 BUY", "SELL": "🔴 SELL", "SKIP": "⏸ SKIP"}.get(bias, bias)
+        stars_str  = "★" * stars + "☆" * (4 - stars)
+        waktu      = datetime.now(pytz.utc).astimezone(WIB).strftime("%d %b %Y %H:%M WIB")
+
+        ax.set_title(
+            f"ZEXLY METHOD — XAUUSD M30  |  Bias: {bias}  |  {stars_str} ({stars}/4)  |  {waktu}",
+            color="white", fontsize=11, fontweight="bold", pad=10
+        )
+        ax.tick_params(colors="#aaaaaa")
+        for spine in ax.spines.values():
+            spine.set_color("#333333")
+        ax.set_ylabel("Price (USD)", color="#aaaaaa", fontsize=9)
+        ax.set_xlabel("Candle M30", color="#aaaaaa", fontsize=9)
+
+        # Legend
+        legend_elements = [
+            Line2D([0], [0], color="#FF4C4C", lw=1.5, label=f"H4 Upper {ch_h4['upper'] if ch_h4 else ''}"),
+            Line2D([0], [0], color="#00C853", lw=1.5, label=f"H4 Lower {ch_h4['lower'] if ch_h4 else ''}"),
+            Line2D([0], [0], color="#FF8C00", lw=1, linestyle="-.", label=f"M30 Upper {ch_m30['upper'] if ch_m30 else ''}"),
+            Line2D([0], [0], color="#1E90FF", lw=1, linestyle="-.", label=f"M30 Lower {ch_m30['lower'] if ch_m30 else ''}"),
+            Line2D([0], [0], color="#FFD700", lw=2, label=f"Price ${price}"),
+        ]
+        ax.legend(handles=legend_elements, loc="upper left",
+                  fontsize=7, facecolor="#1e222d",
+                  labelcolor="white", framealpha=0.8)
+
+        plt.tight_layout()
+        plt.savefig(path, dpi=150, bbox_inches="tight")
+        plt.close()
+        log.info(f"Chart annotated tersimpan: {path}")
         return path
+
     except Exception as e:
-        log.error(f"Screenshot gagal: {e}")
+        log.error(f"Chart error: {e}")
         return None
 
 # ══════════════════════════════════════════════════════════════════
@@ -725,7 +854,11 @@ async def run_scan():
 
     # 13. Screenshot TradingView M5
     log.info("Ambil screenshot TradingView...")
-    screenshot = await take_tv_screenshot(interval="5")
+    screenshot = await take_tv_screenshot(interval="5", context={
+        "ch_h4": ch_h4, "ch_m30": ch_m30,
+        "sd_base": sd_base, "sr_lvls": sr_levels,
+        "price": price, "bias": bias, "stars": stars
+    })
 
     # 14. Kirim ke Telegram
     send_telegram(caption, screenshot)
