@@ -704,6 +704,7 @@ async def run_scan():
     # 9. Minimal 3/4 bintang untuk entry (ZEMETHOD Bab 05)
     if stars < 3:
         log.info(f"Bintang {stars}/4 — belum cukup untuk entry. Skip alert.")
+        return
 
     # 10. Anti-spam: cek apakah sinyal ini sudah dikirim
     signal_key = f"{bias}_{round(price, 0)}_{stars}"
