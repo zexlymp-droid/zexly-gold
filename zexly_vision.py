@@ -614,9 +614,9 @@ async def take_tv_screenshot(interval: str = "5", context: dict = None):
             arrow_y = price
             dy = 15 if bias == "BUY" else -15
             arrow_color = "#00C853" if bias == "BUY" else "#FF4C4C"
+            direction = "▲ BUY" if bias == "BUY" else "▼ SELL"
             ax.annotate(
-                f"  {'▲ BUY' if bias == 'BUY' else '▼ SELL'}
-  {stars}★",
+                f"  {direction}\n  {stars}★",
                 xy=(len(closes) - 3, arrow_y),
                 xytext=(len(closes) - 8, arrow_y + dy * 2),
                 arrowprops=dict(arrowstyle="->", color=arrow_color, lw=2),
