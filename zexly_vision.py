@@ -659,11 +659,12 @@ async def run_scan():
     ok_session, session_name = get_session_status()
     if not ok_session:
         log.info(f"Off-session: {session_name}. Skip scan.")
+        return
 
     # 2. Ambil data
     data = fetch_data()
     if not data:
-
+        return
     df_h4, df_m30 = data["h4"], data["m30"]
     df_m5, df_m1  = data["m5"], data["m1"]
 
