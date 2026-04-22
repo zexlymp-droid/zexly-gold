@@ -24,8 +24,9 @@ CHAT_ID     = os.getenv("TELEGRAM_CHAT_ID", "-1003986432270")
 CHARTIMG_KEY = os.getenv("CHARTIMG_KEY", "")
 WIB         = pytz.timezone("Asia/Jakarta")
 
-STATE_FILE  = "zexly_state.json"
-OFFSET_FILE = "tg_offset.json"
+STATE_FILE   = "zexly_state.json"
+OFFSET_FILE  = "tg_offset.json"
+CHANNEL_FILE = "zexly_channel.json"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -64,6 +65,60 @@ def load_offset():
 
 def save_offset(offset):
     with open(OFFSET_FILE, "w") as f: json.dump({"offset": offset}, f)
+def load_manual_channel():
+    try:
+        with open(CHANNEL_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+def save_manual_channel(data):
+    with open(CHANNEL_FILE, "w") as f:
+        json.dump(data, f)
+
+def calc_channel_from_3points(p1, p2, p3):
+    """
+    Hitung parallel channel dari 3 titik harga.
+    Otomatis detect 2H+1L atau 2L+1H.
+    p1, p2, p3 = list of float (harga)
+    """
+    pts = sorted([p1, p2, p3], reverse=True)
+    high1, mid_pt, low1 = pts[0], pts[1], pts[2]
+
+    # Cek apakah 2 upper + 1 lower atau 2 lower + 1 upper
+    diff_top = abs(high1 - mid_pt)
+    diff_bot = abs(mid_pt - low1)
+
+    if diff_top < diff_bot:
+        # 2 upper (high1, mid_pt) + 1 lower (low1)
+        upper = (high1 + mid_pt) / 2
+        lower = low1
+        mode  = "2H+1L"
+    else:
+        # 1 upper (high1) + 2 lower (mid_pt, low1)
+        upper = high1
+        lower = (mid_pt + low1) / 2
+        mode  = "1H+2L"
+
+    channel_height = upper - lower
+    upper_third    = upper - channel_height / 3
+    lower_third    = lower + channel_height / 3
+    mid            = (upper + lower) / 2
+
+    return {
+        "upper":       round(upper, 2),
+        "lower":       round(lower, 2),
+        "mid":         round(mid, 2),
+        "upper_third": round(upper_third, 2),
+        "lower_third": round(lower_third, 2),
+        "slope":       0,
+        "intercept":   lower,
+        "std":         round(channel_height / 3, 2),
+        "mode":        mode,
+        "manual":      True,
+        "points":      [p1, p2, p3]
+    }
+
 
 # ══════════════════════════════════════════════════════════════════
 #  JAM TRADING (ZEMETHOD Bab 07)
@@ -732,6 +787,67 @@ def handle_commands():
                 chart = generate_chart(force_bias, stars, tf="5", ch_h4=ch_h4, ch_m30=ch_m30, sd_base=sd_base, sr_levels=sr_lvls, price=price)
                 send_telegram(caption, chart, chat_id=chat_id)
 
+        elif text.startswith("/setchannel"):
+            parts = text.split()
+            if len(parts) != 4:
+                send_telegram(
+                    "*Format salah!*
+
+"
+                    "Gunakan: `/setchannel [p1] [p2] [p3]`
+
+"
+                    "Contoh (2 upper + 1 lower):
+"
+                    "`/setchannel 4920 4880 4660`
+
+"
+                    "Contoh (1 upper + 2 lower):
+"
+                    "`/setchannel 4920 4700 4660`
+
+"
+                    "Bot auto detect mana 2H+1L atau 1H+2L",
+                    chat_id=chat_id
+                )
+                continue
+            try:
+                p1 = float(parts[1])
+                p2 = float(parts[2])
+                p3 = float(parts[3])
+                ch = calc_channel_from_3points(p1, p2, p3)
+                save_manual_channel(ch)
+                send_telegram(
+                    f"*CHANNEL DISIMPAN*
+"
+                    f"━━━━━━━━━━━━━━━━━━
+"
+                    f"Mode: `{ch['mode']}`
+"
+                    f"Upper: `{ch['upper']}`
+"
+                    f"Mid  : `{ch['mid']}`
+"
+                    f"Lower: `{ch['lower']}`
+
+"
+                    f"Upper Zone: > `{ch['upper_third']}`
+"
+                    f"Lower Zone: < `{ch['lower_third']}`
+"
+                    f"Middle Zone: `{ch['lower_third']}` - `{ch['upper_third']}`
+"
+                    f"━━━━━━━━━━━━━━━━━━
+"
+                    f"Bot akan pakai channel ini untuk semua sinyal.
+"
+                    f"Update lagi kalau channel berubah dengan `/setchannel`",
+                    chat_id=chat_id
+                )
+            except ValueError:
+                send_telegram("Angka tidak valid. Contoh: `/setchannel 4920 4880 4660`",
+                              chat_id=chat_id)
+
         elif text == "/status":
             price = None
             try:
@@ -772,7 +888,8 @@ def run_scan():
     if not data: return
 
     price    = round(float(data["m1"]["Close"].iloc[-1]), 2)
-    ch_h4    = calc_equidistant_channel(data["h4"])
+    manual_ch = load_manual_channel()
+    ch_h4    = manual_ch if manual_ch else calc_equidistant_channel(data["h4"])
     ch_m30   = calc_equidistant_channel(data["m30"])
     bias     = get_h4_bias(ch_h4, price)
 
