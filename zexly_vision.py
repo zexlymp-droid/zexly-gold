@@ -791,24 +791,12 @@ def handle_commands():
             parts = text.split()
             if len(parts) != 4:
                 send_telegram(
-                    "*Format salah!*
+                    "*Format salahNOT FOUND, jalanin ini instead:
 
-"
-                    "Gunakan: `/setchannel [p1] [p2] [p3]`
+Gunakan: `/setchannel [p1] [p2] [p3]`
 
-"
-                    "Contoh (2 upper + 1 lower):
-"
-                    "`/setchannel 4920 4880 4660`
-
-"
-                    "Contoh (1 upper + 2 lower):
-"
-                    "`/setchannel 4920 4700 4660`
-
-"
-                    "Bot auto detect mana 2H+1L atau 1H+2L",
-                    chat_id=chat_id
+Contoh: `/setchannel 4920 4880 4660`
+Bot auto detect 2H+1L atau 1H+2L",                    chat_id=chat_id
                 )
                 continue
             try:
