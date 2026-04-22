@@ -791,12 +791,13 @@ def handle_commands():
             parts = text.split()
             if len(parts) != 4:
                 send_telegram(
-                    "*Format salahNOT FOUND, jalanin ini instead:
-
-Gunakan: `/setchannel [p1] [p2] [p3]`
-
-Contoh: `/setchannel 4920 4880 4660`
-Bot auto detect 2H+1L atau 1H+2L",                    chat_id=chat_id
+                    "*Format salah!*\n\n"
+                    "Gunakan: `/setchannel [p1] [p2] [p3]`\n\n"
+                    "Contoh 2 upper 1 lower:\n"
+                    "`/setchannel 4920 4880 4660`\n\n"
+                    "Contoh 1 upper 2 lower:\n"
+                    "`/setchannel 4920 4700 4660`",
+                    chat_id=chat_id
                 )
                 continue
             try:
@@ -805,33 +806,17 @@ Bot auto detect 2H+1L atau 1H+2L",                    chat_id=chat_id
                 p3 = float(parts[3])
                 ch = calc_channel_from_3points(p1, p2, p3)
                 save_manual_channel(ch)
-                send_telegram(
-                    f"*CHANNEL DISIMPAN*
-"
-                    f"━━━━━━━━━━━━━━━━━━
-"
-                    f"Mode: `{ch['mode']}`
-"
-                    f"Upper: `{ch['upper']}`
-"
-                    f"Mid  : `{ch['mid']}`
-"
-                    f"Lower: `{ch['lower']}`
-
-"
-                    f"Upper Zone: > `{ch['upper_third']}`
-"
-                    f"Lower Zone: < `{ch['lower_third']}`
-"
-                    f"Middle Zone: `{ch['lower_third']}` - `{ch['upper_third']}`
-"
-                    f"━━━━━━━━━━━━━━━━━━
-"
-                    f"Bot akan pakai channel ini untuk semua sinyal.
-"
-                    f"Update lagi kalau channel berubah dengan `/setchannel`",
-                    chat_id=chat_id
+                msg = (
+                    f"*CHANNEL DISIMPAN*\n"
+                    f"Mode: `{ch['mode']}`\n"
+                    f"Upper: `{ch['upper']}`\n"
+                    f"Mid  : `{ch['mid']}`\n"
+                    f"Lower: `{ch['lower']}`\n"
+                    f"Upper Zone: > `{ch['upper_third']}`\n"
+                    f"Lower Zone: < `{ch['lower_third']}`\n"
+                    f"Bot pakai channel ini untuk semua sinyal."
                 )
+                send_telegram(msg, chat_id=chat_id)
             except ValueError:
                 send_telegram("Angka tidak valid. Contoh: `/setchannel 4920 4880 4660`",
                               chat_id=chat_id)
