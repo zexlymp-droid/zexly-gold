@@ -33,6 +33,7 @@ logging.basicConfig(
     datefmt="%H:%M:%S"
 )
 log = logging.getLogger("ZEXLY")
+log.info(f"CHARTIMG_KEY loaded: {bool(os.getenv("CHARTIMG_KEY"))}")
 
 # ══════════════════════════════════════════════════════════════════
 #  STATE & ANTI-SPAM
