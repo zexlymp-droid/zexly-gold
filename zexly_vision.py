@@ -4,6 +4,7 @@
 ║   Equidistant Channel + S&D + Price Action       ║
 ║   Sesuai ZEMETHOD Ebook (H4 → M30 → M5 → M1)   ║
 ║   + Command Handler: /chart /scan /status /force ║
+║   + TradingView Chart via chart-img.com          ║
 ╚══════════════════════════════════════════════════╝
 """
 
@@ -14,17 +15,14 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 import requests
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
 from dotenv import load_dotenv
 
 load_dotenv()
 
-TOKEN   = os.getenv("TELEGRAM_TOKEN")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "-1003986432270")
-WIB     = pytz.timezone("Asia/Jakarta")
+TOKEN       = os.getenv("TELEGRAM_TOKEN")
+CHAT_ID     = os.getenv("TELEGRAM_CHAT_ID", "-1003986432270")
+CHARTIMG_KEY = os.getenv("CHARTIMG_KEY", "")
+WIB         = pytz.timezone("Asia/Jakarta")
 
 STATE_FILE  = "zexly_state.json"
 OFFSET_FILE = "tg_offset.json"
@@ -35,6 +33,10 @@ logging.basicConfig(
     datefmt="%H:%M:%S"
 )
 log = logging.getLogger("ZEXLY")
+
+# ══════════════════════════════════════════════════════════════════
+#  STATE & ANTI-SPAM
+# ══════════════════════════════════════════════════════════════════
 
 def load_state():
     try:
@@ -61,16 +63,24 @@ def load_offset():
 def save_offset(offset):
     with open(OFFSET_FILE, "w") as f: json.dump({"offset": offset}, f)
 
+# ══════════════════════════════════════════════════════════════════
+#  JAM TRADING (ZEMETHOD Bab 07)
+# ══════════════════════════════════════════════════════════════════
+
 def get_session_status():
     now = datetime.now(WIB)
     t = now.hour * 60 + now.minute
-    if 14*60 <= t < 19*60: return True,  "London Open (TERBAIK)"
-    elif 20*60 <= t < 23*60: return True, "New York Session (BAIK)"
-    elif 19*60 <= t < 20*60: return True, "NY-London Overlap (HATI-HATI)"
-    else: return False, "Asian / Off-Session"
+    if 14*60 <= t < 19*60:   return True,  "London Open (TERBAIK)"
+    elif 20*60 <= t < 23*60: return True,  "New York Session (BAIK)"
+    elif 19*60 <= t < 20*60: return True,  "NY-London Overlap (HATI-HATI)"
+    else:                     return False, "Asian / Off-Session"
 
 def get_waktu():
     return datetime.now(WIB).strftime("%d %b %Y | %H:%M WIB")
+
+# ══════════════════════════════════════════════════════════════════
+#  DATA FETCH
+# ══════════════════════════════════════════════════════════════════
 
 def fetch_data():
     try:
@@ -88,6 +98,10 @@ def fetch_data():
     except Exception as e:
         log.error(f"Gagal fetch data: {e}")
         return None
+
+# ══════════════════════════════════════════════════════════════════
+#  EQUIDISTANT CHANNEL
+# ══════════════════════════════════════════════════════════════════
 
 def calc_equidistant_channel(df):
     closes = df["Close"].values
@@ -112,6 +126,10 @@ def get_h4_bias(ch, price):
     elif price <= ch["lower_third"]: return "BUY"
     return "SKIP"
 
+# ══════════════════════════════════════════════════════════════════
+#  RSI
+# ══════════════════════════════════════════════════════════════════
+
 def calc_rsi(series, period=14):
     delta = series.diff()
     gain  = delta.clip(lower=0).rolling(period).mean()
@@ -119,6 +137,10 @@ def calc_rsi(series, period=14):
     rs    = gain / loss.replace(0, np.nan)
     rsi   = 100 - (100 / (1 + rs))
     return round(float(rsi.iloc[-1]), 1)
+
+# ══════════════════════════════════════════════════════════════════
+#  S&D BASE DETECTION
+# ══════════════════════════════════════════════════════════════════
 
 def detect_sd_base(df, bias):
     bodies = np.abs(df["Close"].values - df["Open"].values)
@@ -155,24 +177,41 @@ def detect_sd_base(df, bias):
             }
     return None
 
-def find_sr_levels(df):
+# ══════════════════════════════════════════════════════════════════
+#  S&R LEVELS — FIX: filter level yang terlalu deket entry
+# ══════════════════════════════════════════════════════════════════
+
+def find_sr_levels(df, min_distance=15):
+    """
+    Cari max 3 level S&R terkuat dari swing high/low M30.
+    min_distance: jarak minimum dari harga sekarang (pips)
+    """
     highs, lows = df["High"].values, df["Low"].values
+    price = float(df["Close"].iloc[-1])
     levels = []
     for i in range(2, len(highs) - 2):
         if highs[i] > highs[i-1] and highs[i] > highs[i-2] and \
            highs[i] > highs[i+1] and highs[i] > highs[i+2]:
-            levels.append(round(highs[i], 2))
+            lvl = round(highs[i], 2)
+            # Filter level yang terlalu deket harga sekarang
+            if abs(lvl - price) >= min_distance:
+                levels.append(lvl)
         if lows[i] < lows[i-1] and lows[i] < lows[i-2] and \
            lows[i] < lows[i+1] and lows[i] < lows[i+2]:
-            levels.append(round(lows[i], 2))
+            lvl = round(lows[i], 2)
+            if abs(lvl - price) >= min_distance:
+                levels.append(lvl)
     if not levels: return []
     levels.sort()
     clustered = [levels[0]]
     for lv in levels[1:]:
         if lv - clustered[-1] > 5: clustered.append(lv)
-    price = df["Close"].iloc[-1]
     clustered.sort(key=lambda x: abs(x - price))
     return clustered[:3]
+
+# ══════════════════════════════════════════════════════════════════
+#  S&R FLIP M5
+# ══════════════════════════════════════════════════════════════════
 
 def check_sr_flip_m5(df_m5, sr_levels, bias):
     if not sr_levels: return {"confirmed": False}
@@ -186,6 +225,10 @@ def check_sr_flip_m5(df_m5, sr_levels, bias):
             return {"confirmed": True, "flip_type": "RESISTANCE BARU", "flip_level": level,
                     "detail": f"M5 close {last_close:.2f} tembus BAWAH {level:.2f}"}
     return {"confirmed": False}
+
+# ══════════════════════════════════════════════════════════════════
+#  CANDLE TRIGGER M1
+# ══════════════════════════════════════════════════════════════════
 
 def detect_m1_trigger(df_m1, bias):
     if len(df_m1) < 3: return {"found": False}
@@ -202,15 +245,21 @@ def detect_m1_trigger(df_m1, bias):
     lower_shadow = min(o1, c1c) - l1
     if bias == "BUY":
         if c1c > o1 and c0c < o0 and o1 <= c0c and c1c >= o0:
-            return {"found": True, "type": "Bullish Engulfing", "strength": "KUAT" if body1 > body0 else "SEDANG"}
+            return {"found": True, "type": "Bullish Engulfing",
+                    "strength": "KUAT" if body1 > body0 else "SEDANG"}
         if c1c > o1 and lower_shadow >= 2*body1 and upper_shadow <= 0.3*range1:
             return {"found": True, "type": "Bullish Pin Bar", "strength": "KUAT"}
     elif bias == "SELL":
         if c1c < o1 and c0c > o0 and o1 >= c0c and c1c <= o0:
-            return {"found": True, "type": "Bearish Engulfing", "strength": "KUAT" if body1 > body0 else "SEDANG"}
+            return {"found": True, "type": "Bearish Engulfing",
+                    "strength": "KUAT" if body1 > body0 else "SEDANG"}
         if c1c < o1 and upper_shadow >= 2*body1 and lower_shadow <= 0.3*range1:
             return {"found": True, "type": "Bearish Pin Bar", "strength": "KUAT"}
     return {"found": False}
+
+# ══════════════════════════════════════════════════════════════════
+#  SISTEM BINTANG
+# ══════════════════════════════════════════════════════════════════
 
 def calc_star_rating(bias_h4, sd_base, sr_flip, m1_trigger, ch_m30, price):
     stars = 0
@@ -235,135 +284,89 @@ def calc_star_rating(bias_h4, sd_base, sr_flip, m1_trigger, ch_m30, price):
         reasons.append(f"★ Trigger M1: {m1_trigger['type']} ({m1_trigger['strength']})")
     return stars, reasons
 
+# ══════════════════════════════════════════════════════════════════
+#  SL / TP — FIX: TP1 minimum 20 pips dari entry
+# ══════════════════════════════════════════════════════════════════
+
 def calc_sl_tp(price, bias, sd_base, sr_levels, ch_m30):
-    buffer = 7.0
+    buffer   = 7.0
+    min_tp1  = 20.0  # TP1 minimal 20 pips dari entry
+
     if bias == "BUY":
         sl_base = sd_base["base_low"] if sd_base and sd_base.get("found") else price - 15
-        sl = round(sl_base - buffer, 2)
+        sl   = round(sl_base - buffer, 2)
         risk = abs(price - sl)
-        tp1_c = [lv for lv in sr_levels if lv > price]
-        tp1 = round(min(tp1_c), 2) if tp1_c else round(price + risk * 2, 2)
+        # TP1: S&R di atas harga, minimal 20 pips
+        tp1_c = [lv for lv in sr_levels if lv > price + min_tp1]
+        tp1 = round(min(tp1_c), 2) if tp1_c else round(price + max(risk * 1.5, min_tp1), 2)
         tp2 = round(ch_m30["upper"], 2)
+        # Pastiin TP2 di atas TP1
+        if tp2 <= tp1: tp2 = round(price + risk * 3, 2)
     else:
         sl_base = sd_base["base_high"] if sd_base and sd_base.get("found") else price + 15
-        sl = round(sl_base + buffer, 2)
+        sl   = round(sl_base + buffer, 2)
         risk = abs(sl - price)
-        tp1_c = [lv for lv in sr_levels if lv < price]
-        tp1 = round(max(tp1_c), 2) if tp1_c else round(price - risk * 2, 2)
+        # TP1: S&R di bawah harga, minimal 20 pips
+        tp1_c = [lv for lv in sr_levels if lv < price - min_tp1]
+        tp1 = round(max(tp1_c), 2) if tp1_c else round(price - max(risk * 1.5, min_tp1), 2)
         tp2 = round(ch_m30["lower"], 2)
+        # Pastiin TP2 di bawah TP1
+        if tp2 >= tp1: tp2 = round(price - risk * 3, 2)
+
     rr1 = round(abs(tp1 - price) / risk, 2) if risk > 0 else 0
     rr2 = round(abs(tp2 - price) / risk, 2) if risk > 0 else 0
-    return {"sl": sl, "tp1": tp1, "tp2": tp2, "risk_pips": round(risk, 1), "rr1": rr1, "rr2": rr2}
+    return {"sl": sl, "tp1": tp1, "tp2": tp2,
+            "risk_pips": round(risk, 1), "rr1": rr1, "rr2": rr2}
 
-def generate_chart(df_m30, ch_h4, ch_m30, sd_base, sr_levels, price, bias, stars):
-    path = "zexly_chart_annotated.png"
+# ══════════════════════════════════════════════════════════════════
+#  CHART — TradingView via chart-img.com
+# ══════════════════════════════════════════════════════════════════
+
+def generate_chart(bias, stars, tf="30"):
+    """
+    Ambil chart TradingView realtime via chart-img.com API.
+    tf: 1=M1, 5=M5, 15=M15, 30=M30, 60=H1, 240=H4
+    """
+    path = "zexly_chart.png"
+
+    if not CHARTIMG_KEY:
+        log.warning("CHARTIMG_KEY tidak ada, skip chart")
+        return None
+
+    # Interval map untuk chart-img
+    interval_map = {
+        "1": "1m", "5": "5m", "15": "15m",
+        "30": "30m", "60": "1h", "240": "4h"
+    }
+    interval = interval_map.get(str(tf), "30m")
+
     try:
-        n = min(80, len(df_m30))
-        closes = df_m30["Close"].values[-n:]
-        highs  = df_m30["High"].values[-n:]
-        lows   = df_m30["Low"].values[-n:]
-        opens  = df_m30["Open"].values[-n:]
-
-        fig, ax = plt.subplots(figsize=(16, 8), facecolor="#131722")
-        ax.set_facecolor("#131722")
-
-        for i in range(n):
-            color = "#26a69a" if closes[i] >= opens[i] else "#ef5350"
-            ax.plot([i, i], [lows[i], highs[i]], color=color, linewidth=0.8, alpha=0.8)
-            body_bot = min(closes[i], opens[i])
-            body_top = max(closes[i], opens[i])
-            ax.bar(i, max(body_top - body_bot, 0.1), bottom=body_bot,
-                   color=color, width=0.6, alpha=0.95)
-
-        ax.axhline(ch_h4["upper"], color="#FF4C4C", linewidth=2, linestyle="-",
-                   label=f"H4 Upper: {ch_h4['upper']}", zorder=3)
-        ax.axhline(ch_h4["mid"], color="#ffffff", linewidth=1,
-                   linestyle="--", alpha=0.4, label=f"H4 Mid: {ch_h4['mid']}", zorder=3)
-        ax.axhline(ch_h4["lower"], color="#00C853", linewidth=2, linestyle="-",
-                   label=f"H4 Lower: {ch_h4['lower']}", zorder=3)
-        ax.axhline(ch_h4["upper_third"], color="#FF4C4C", linewidth=0.8, linestyle=":", alpha=0.5)
-        ax.axhline(ch_h4["lower_third"], color="#00C853", linewidth=0.8, linestyle=":", alpha=0.5)
-        ax.axhspan(ch_h4["upper_third"], ch_h4["upper"], alpha=0.07, color="red")
-        ax.axhspan(ch_h4["lower"], ch_h4["lower_third"], alpha=0.07, color="green")
-
-        ax.axhline(ch_m30["upper"], color="#FF8C00", linewidth=1.2, linestyle="-.",
-                   alpha=0.8, label=f"M30 Upper: {ch_m30['upper']}")
-        ax.axhline(ch_m30["lower"], color="#1E90FF", linewidth=1.2, linestyle="-.",
-                   alpha=0.8, label=f"M30 Lower: {ch_m30['lower']}")
-
-        if sd_base and sd_base.get("found"):
-            base_color = "#00C853" if bias == "BUY" else "#FF4C4C"
-            ax.axhspan(sd_base["base_low"], sd_base["base_high"],
-                       alpha=0.2, color=base_color, zorder=2,
-                       label=f"{sd_base['type']} Zone")
-            ax.axhline(sd_base["base_high"], color=base_color, linewidth=1, linestyle="--", alpha=0.9)
-            ax.axhline(sd_base["base_low"], color=base_color, linewidth=1, linestyle="--", alpha=0.9)
-            ax.text(2, sd_base["base_mid"],
-                    f" {sd_base['type']} ({sd_base['candles_in_base']} candle)",
-                    color=base_color, fontsize=8, fontweight="bold", va="center",
-                    bbox=dict(boxstyle="round,pad=0.2", facecolor="#131722", alpha=0.7))
-
-        for lvl in sr_levels:
-            ax.axhline(lvl, color="#FFD700", linewidth=0.8, linestyle=":", alpha=0.8)
-            ax.text(n - 1, lvl, f" S&R {lvl}", color="#FFD700", fontsize=7, va="bottom")
-
-        ax.axhline(price, color="#FFD700", linewidth=2, linestyle="-", zorder=5)
-        ax.text(n - 1, price, f" ${price}", color="#FFD700",
-                fontsize=10, fontweight="bold", va="bottom")
-
-        if bias in ("BUY", "SELL"):
-            arrow_color = "#00C853" if bias == "BUY" else "#FF4C4C"
-            direction   = "BUY" if bias == "BUY" else "SELL"
-            dy = 20 if bias == "BUY" else -20
-            ax.annotate(
-                f" {direction}\n {stars}*",
-                xy=(n - 3, price),
-                xytext=(n - 12, price + dy * 2),
-                arrowprops=dict(arrowstyle="->", color=arrow_color, lw=2.5),
-                color=arrow_color, fontsize=11, fontweight="bold",
-                bbox=dict(boxstyle="round,pad=0.3", facecolor="#131722", alpha=0.8)
-            )
-
-        stars_str = "*" * stars + "-" * (4 - stars)
-        waktu = get_waktu()
-        ax.set_title(f"ZEXLY METHOD  |  XAUUSD M30  |  {waktu}",
-                     color="white", fontsize=12, fontweight="bold", pad=12)
-
-        bias_color = {"BUY": "#00C853", "SELL": "#FF4C4C", "SKIP": "#aaaaaa"}.get(bias, "#fff")
-        fig.text(0.5, 0.93, f"Bias: {bias}  |  Kualitas: {stars_str} ({stars}/4)",
-                 ha="center", color=bias_color, fontsize=10, fontweight="bold")
-
-        ax.tick_params(colors="#aaaaaa")
-        for spine in ax.spines.values(): spine.set_color("#333333")
-        ax.set_ylabel("Price (USD)", color="#aaaaaa", fontsize=9)
-        ax.set_xlabel("Candle M30 (80 terakhir)", color="#aaaaaa", fontsize=9)
-        ax.yaxis.set_label_position("right")
-        ax.yaxis.tick_right()
-
-        legend_elements = [
-            Line2D([0],[0], color="#FF4C4C", lw=2, label=f"H4 Upper {ch_h4['upper']}"),
-            Line2D([0],[0], color="#00C853", lw=2, label=f"H4 Lower {ch_h4['lower']}"),
-            Line2D([0],[0], color="#FF8C00", lw=1.2, linestyle="-.", label=f"M30 Upper {ch_m30['upper']}"),
-            Line2D([0],[0], color="#1E90FF", lw=1.2, linestyle="-.", label=f"M30 Lower {ch_m30['lower']}"),
-            Line2D([0],[0], color="#FFD700", lw=2, label=f"Price ${price}"),
-        ]
-        if sd_base and sd_base.get("found"):
-            bc = "#00C853" if bias == "BUY" else "#FF4C4C"
-            legend_elements.append(
-                Line2D([0],[0], color=bc, lw=4, alpha=0.4,
-                       label=f"{sd_base['type']} {sd_base['base_low']}-{sd_base['base_high']}")
-            )
-        ax.legend(handles=legend_elements, loc="upper left", fontsize=7.5,
-                  facecolor="#1e222d", labelcolor="white", framealpha=0.85, edgecolor="#333333")
-
-        plt.tight_layout(rect=[0, 0, 1, 0.93])
-        plt.savefig(path, dpi=150, bbox_inches="tight", facecolor="#131722")
-        plt.close()
-        log.info(f"Chart tersimpan: {path}")
-        return path
+        url = "https://api.chart-img.com/v1/tradingview/advanced-chart"
+        params = {
+            "symbol":   "OANDA:XAUUSD",
+            "interval": interval,
+            "theme":    "dark",
+            "studies":  "RSI@tv-basicstudies",
+            "width":    1280,
+            "height":   720,
+            "key":      CHARTIMG_KEY,
+        }
+        resp = requests.get(url, params=params, timeout=30)
+        if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("image"):
+            with open(path, "wb") as f:
+                f.write(resp.content)
+            log.info(f"Chart TradingView tersimpan: {path}")
+            return path
+        else:
+            log.error(f"chart-img error: {resp.status_code} — {resp.text[:200]}")
+            return None
     except Exception as e:
         log.error(f"Chart error: {e}")
         return None
+
+# ══════════════════════════════════════════════════════════════════
+#  TELEGRAM
+# ══════════════════════════════════════════════════════════════════
 
 def send_telegram(caption, photo_path=None, chat_id=None):
     cid  = chat_id or CHAT_ID
@@ -389,10 +392,13 @@ def send_telegram(caption, photo_path=None, chat_id=None):
         log.error(f"Telegram error: {e}")
         return False
 
+# ══════════════════════════════════════════════════════════════════
+#  FORMAT PESAN SINYAL
+# ══════════════════════════════════════════════════════════════════
+
 def format_signal_msg(price, bias, stars, star_reasons, sd_base,
                       m1_trigger, sr_flip, sl_tp, rsi_m15,
                       session, ch_h4, ch_m30, force=False):
-    emoji_bias    = "SELL" if bias == "SELL" else "BUY"
     stars_display = "★" * stars + "☆" * (4 - stars)
     trigger_txt = f"`{m1_trigger['type']} ({m1_trigger['strength']})`" \
                   if m1_trigger.get("found") else "`Belum muncul`"
@@ -407,40 +413,46 @@ def format_signal_msg(price, bias, stars, star_reasons, sd_base,
     )
     reasons_str = "\n".join([f"  {r}" for r in star_reasons])
     header = "FORCE ENTRY (Manual Override)" if force else "ZEXLY METHOD — SINYAL ENTRY"
-    rr_warn = f"\n   RR rendah ({sl_tp['rr1']}:1) — manage risk!" if sl_tp and sl_tp["rr1"] < 1.5 else ""
+    rr_warn = f"\n   ⚠️ RR rendah ({sl_tp['rr1']}:1) — manage risk!" \
+              if sl_tp and sl_tp["rr1"] < 1.5 else ""
+    signal_emoji = "🔴 SELL" if bias == "SELL" else "🟢 BUY"
 
     return (
         f"*{header}*\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"*Instrument:* XAUUSD\n"
-        f"*Price:* `${price}`\n"
-        f"*Signal:* `{emoji_bias}`\n"
-        f"*Kualitas:* `{stars_display}` ({stars}/4 bintang)\n"
-        f"*Sesi:* {session}\n"
+        f"📍 *Instrument:* XAUUSD\n"
+        f"💰 *Price:* `${price}`\n"
+        f"⚡ *Signal:* {signal_emoji}\n"
+        f"⭐ *Kualitas:* `{stars_display}` ({stars}/4 bintang)\n"
+        f"📡 *Sesi:* {session}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"*ANALISA ZEMETHOD*\n\n"
-        f"*H4 Channel*\n"
+        f"📊 *ANALISA ZEMETHOD*\n\n"
+        f"🏗️ *H4 Channel*\n"
         f"  Upper: `{ch_h4['upper']}` | Mid: `{ch_h4['mid']}` | Lower: `{ch_h4['lower']}`\n"
         f"  Bias: `{bias} ONLY`\n\n"
-        f"*M30 Channel*\n"
+        f"📐 *M30 Channel*\n"
         f"  Upper: `{ch_m30['upper']}` | Lower: `{ch_m30['lower']}`\n\n"
-        f"*S&D Base:* {base_txt}\n\n"
-        f"*S&R Flip M5:* {flip_txt}\n\n"
-        f"*Trigger M1:* {trigger_txt}\n\n"
-        f"*RSI M30:* `{rsi_m15}` — {rsi_label}\n"
+        f"🎯 *S&D Base:* {base_txt}\n\n"
+        f"🔀 *S&R Flip M5:* {flip_txt}\n\n"
+        f"🕯️ *Trigger M1:* {trigger_txt}\n\n"
+        f"📈 *RSI M30:* `{rsi_m15}` — {rsi_label}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"*RENCANA TRADE*\n\n"
+        f"💼 *RENCANA TRADE*\n\n"
         f"  Entry : `${price}`\n"
         f"  SL    : `${sl_tp['sl']}` ({sl_tp['risk_pips']} pips)\n"
-        f"  TP1   : `${sl_tp['tp1']}` (RR `{sl_tp['rr1']}:1`) tutup 70%\n"
-        f"  TP2   : `${sl_tp['tp2']}` (RR `{sl_tp['rr2']}:1`) sisa 30%{rr_warn}\n\n"
+        f"  TP1   : `${sl_tp['tp1']}` (RR `{sl_tp['rr1']}:1`) → tutup 70%\n"
+        f"  TP2   : `${sl_tp['tp2']}` (RR `{sl_tp['rr2']}:1`) → sisa 30%{rr_warn}\n\n"
         f"  TP1 hit → geser SL ke breakeven!\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"*ALASAN:*\n{reasons_str}\n"
+        f"✅ *ALASAN:*\n{reasons_str}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"Konfirmasi visual M1 sebelum entry!\n"
+        f"⏰ Konfirmasi visual M1 sebelum entry!\n"
         f"`{get_waktu()}`"
     )
+
+# ══════════════════════════════════════════════════════════════════
+#  COMMAND HANDLER
+# ══════════════════════════════════════════════════════════════════
 
 def get_telegram_updates(offset=0):
     try:
@@ -450,8 +462,7 @@ def get_telegram_updates(offset=0):
             timeout=10
         )
         return resp.json().get("result", [])
-    except Exception:
-        return []
+    except Exception: return []
 
 def handle_commands():
     offset  = load_offset()
@@ -466,14 +477,13 @@ def handle_commands():
 
         text    = msg.get("text", "").strip().lower()
         chat_id = str(msg["chat"]["id"])
-
         log.info(f"Command: '{text}' dari {chat_id}")
 
         if text in ("/chart", "/scan", "/force"):
-            send_telegram("Mengambil data market... tunggu sebentar", chat_id=chat_id)
+            send_telegram("🔍 Mengambil data... tunggu sebentar", chat_id=chat_id)
             data = fetch_data()
             if not data:
-                send_telegram("Gagal ambil data market.", chat_id=chat_id)
+                send_telegram("❌ Gagal ambil data market.", chat_id=chat_id)
                 continue
 
             price    = round(float(data["m1"]["Close"].iloc[-1]), 2)
@@ -488,16 +498,14 @@ def handle_commands():
             _, session = get_session_status()
 
             if text == "/chart":
-                stars = 0
-                if bias != "SKIP":
-                    stars += 1
-                    if sd_base and sd_base.get("found"): stars += 1
-                chart = generate_chart(data["m30"], ch_h4, ch_m30,
-                                       sd_base, sr_lvls, price, bias, stars)
+                # Chart M30 realtime
+                tf_bias = "30"
+                chart = generate_chart(bias, 0, tf=tf_bias)
                 caption = (
-                    f"*XAUUSD M30 — ZEMETHOD CHART*\n"
-                    f"Price: `${price}` | Bias: `{bias}`\n"
-                    f"Sesi: {session}\n"
+                    f"📊 *XAUUSD M30 — REALTIME*\n"
+                    f"💰 Price: `${price}` | Bias: `{bias}`\n"
+                    f"📡 Sesi: {session}\n"
+                    f"H4 Upper: `{ch_h4['upper']}` | Lower: `{ch_h4['lower']}`\n"
                     f"`{get_waktu()}`"
                 )
                 send_telegram(caption, chart, chat_id=chat_id)
@@ -505,32 +513,30 @@ def handle_commands():
             elif text == "/scan":
                 if bias == "SKIP":
                     send_telegram(
-                        f"*SCAN RESULT*\nPrice: `${price}`\nBias H4: `SKIP` (Middle Zone)\n`{get_waktu()}`",
+                        f"*SCAN RESULT*\n💰 Price: `${price}`\nBias H4: `SKIP` (Middle Zone)\n`{get_waktu()}`",
                         chat_id=chat_id
                     )
                     continue
                 stars, reasons = calc_star_rating(bias, sd_base, sr_flip, trigger, ch_m30, price)
-                sl_tp  = calc_sl_tp(price, bias, sd_base, sr_lvls, ch_m30)
+                sl_tp   = calc_sl_tp(price, bias, sd_base, sr_lvls, ch_m30)
                 caption = format_signal_msg(price, bias, stars, reasons, sd_base,
                                             trigger, sr_flip, sl_tp, rsi, session, ch_h4, ch_m30)
-                chart = generate_chart(data["m30"], ch_h4, ch_m30,
-                                       sd_base, sr_lvls, price, bias, stars)
+                chart = generate_chart(bias, stars, tf="5")
                 send_telegram(caption, chart, chat_id=chat_id)
 
             elif text == "/force":
                 force_bias = bias if bias != "SKIP" else "SELL"
                 if bias == "SKIP":
-                    reasons = ["Forced — Middle Zone (tidak ideal)"]
+                    reasons = ["⚠️ Forced — Middle Zone (tidak ideal)"]
                     stars   = 0
                 else:
                     stars, reasons = calc_star_rating(bias, sd_base, sr_flip, trigger, ch_m30, price)
-                    reasons.append("Dikirim via /force (manual override)")
-                sl_tp  = calc_sl_tp(price, force_bias, sd_base, sr_lvls, ch_m30)
+                    reasons.append("⚡ Dikirim via /force (manual override)")
+                sl_tp   = calc_sl_tp(price, force_bias, sd_base, sr_lvls, ch_m30)
                 caption = format_signal_msg(price, force_bias, stars, reasons, sd_base,
                                             trigger, sr_flip, sl_tp, rsi, session,
                                             ch_h4, ch_m30, force=True)
-                chart = generate_chart(data["m30"], ch_h4, ch_m30,
-                                       sd_base, sr_lvls, price, force_bias, stars)
+                chart = generate_chart(force_bias, stars, tf="5")
                 send_telegram(caption, chart, chat_id=chat_id)
 
         elif text == "/status":
@@ -541,19 +547,23 @@ def handle_commands():
             except Exception: pass
             ok_session, session = get_session_status()
             send_telegram(
-                f"*ZEXLY STATUS*\n"
+                f"📊 *ZEXLY STATUS*\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
-                f"Harga: `${price or 'N/A'}`\n"
-                f"Sesi: {session}\n"
-                f"Trading: {'AKTIF' if ok_session else 'OFF'}\n"
+                f"💰 Harga: `${price or 'N/A'}`\n"
+                f"📡 Sesi: {session}\n"
+                f"🟢 Trading: {'AKTIF' if ok_session else 'OFF'}\n"
                 f"`{get_waktu()}`\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
-                f"`/chart` — chart ZEMETHOD\n"
+                f"`/chart` — chart M30 realtime\n"
                 f"`/scan` — scan manual\n"
-                f"`/force` — sinyal paksa (walaupun 1 bintang)\n"
+                f"`/force` — sinyal paksa\n"
                 f"`/status` — status bot",
                 chat_id=chat_id
             )
+
+# ══════════════════════════════════════════════════════════════════
+#  MAIN AUTO SCAN
+# ══════════════════════════════════════════════════════════════════
 
 def run_scan():
     log.info("═══ ZEXLY SCAN ═══")
@@ -566,8 +576,7 @@ def run_scan():
         return
 
     data = fetch_data()
-    if not data:
-        return
+    if not data: return
 
     price    = round(float(data["m1"]["Close"].iloc[-1]), 2)
     ch_h4    = calc_equidistant_channel(data["h4"])
@@ -602,8 +611,8 @@ def run_scan():
     caption = format_signal_msg(price, bias, stars, star_reasons, sd_base,
                                 m1_trigger, sr_flip, sl_tp, rsi_m15,
                                 session_name, ch_h4, ch_m30)
-    chart   = generate_chart(data["m30"], ch_h4, ch_m30, sd_base,
-                              sr_levels, price, bias, stars)
+    chart   = generate_chart(bias, stars, tf="5")
+
     send_telegram(caption, chart)
     mark_alerted(signal_key)
     log.info(f"Sinyal {bias} {stars} bintang terkirim!")
@@ -611,4 +620,3 @@ def run_scan():
 
 if __name__ == "__main__":
     run_scan()
-
