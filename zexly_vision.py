@@ -349,8 +349,8 @@ def generate_chart(bias, stars, tf="30"):
             "interval": interval,
             "theme":    "dark",
             "studies":  "RSI@tv-basicstudies",
-            "width":    1280,
-            "height":   720,
+            "width":    800,
+            "height":   600,
             "key":      CHARTIMG_KEY,
         }
         resp = requests.get(url, params=params, timeout=30)
