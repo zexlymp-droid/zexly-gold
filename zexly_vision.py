@@ -105,13 +105,108 @@ def fetch_data():
 #  EQUIDISTANT CHANNEL
 # ══════════════════════════════════════════════════════════════════
 
+def find_swings(arr, order=5):
+    """Cari swing high dan swing low — minimal order candle di kiri & kanan."""
+    highs, lows = [], []
+    for i in range(order, len(arr) - order):
+        if all(arr[i] >= arr[i-j] for j in range(1, order+1)) and            all(arr[i] >= arr[i+j] for j in range(1, order+1)):
+            highs.append((i, float(arr[i])))
+        if all(arr[i] <= arr[i-j] for j in range(1, order+1)) and            all(arr[i] <= arr[i+j] for j in range(1, order+1)):
+            lows.append((i, float(arr[i])))
+    return highs, lows
+
 def calc_equidistant_channel(df):
-    closes = df["Close"].values
-    x = np.arange(len(closes))
+    """
+    Parallel Channel — 2 swing high + 1 swing low (descending)
+    atau 2 swing low + 1 swing high (ascending).
+    Lower/upper line dibuat paralel satu sama lain.
+    Mirip cara gambar channel manual di TradingView.
+    """
+    highs_arr = df["High"].values
+    lows_arr  = df["Low"].values
+    closes    = df["Close"].values
+    n = len(closes)
+    last_x = n - 1
+
+    swing_highs, swing_lows = find_swings(highs_arr, order=5)
+    _, swing_lows2 = find_swings(lows_arr, order=5)
+
+    def line_at(x, x1, y1, slope):
+        return y1 + slope * (x - x1)
+
+    # Coba descending channel: 2 swing high + 1 swing low
+    if len(swing_highs) >= 2 and len(swing_lows2) >= 1:
+        sh1, sh2 = swing_highs[-2], swing_highs[-1]
+        x1h, y1h = sh1
+        x2h, y2h = sh2
+        slope = (y2h - y1h) / (x2h - x1h) if x2h != x1h else 0
+
+        # Upper line dari 2 swing high
+        upper_at_end = line_at(last_x, x1h, y1h, slope)
+
+        # Lower line paralel melewati swing low terdekat
+        sl = swing_lows2[-1]
+        xl, yl = sl
+        lower_intercept = yl - slope * xl
+        lower_at_end = slope * last_x + lower_intercept
+
+        # Mid line
+        mid_at_end = (upper_at_end + lower_at_end) / 2
+        channel_height = upper_at_end - lower_at_end
+
+        # Pastiin upper > lower
+        if channel_height > 0:
+            upper_third = upper_at_end - channel_height / 3
+            lower_third = lower_at_end + channel_height / 3
+            return {
+                "slope": slope,
+                "intercept": lower_intercept,
+                "std": channel_height / 3,
+                "mid": round(mid_at_end, 2),
+                "upper": round(upper_at_end, 2),
+                "lower": round(lower_at_end, 2),
+                "upper_third": round(upper_third, 2),
+                "lower_third": round(lower_third, 2),
+                "method": "parallel_2H1L"
+            }
+
+    # Coba ascending channel: 2 swing low + 1 swing high
+    if len(swing_lows2) >= 2 and len(swing_highs) >= 1:
+        sl1, sl2 = swing_lows2[-2], swing_lows2[-1]
+        x1l, y1l = sl1
+        x2l, y2l = sl2
+        slope = (y2l - y1l) / (x2l - x1l) if x2l != x1l else 0
+
+        lower_at_end = line_at(last_x, x1l, y1l, slope)
+
+        sh = swing_highs[-1]
+        xh, yh = sh
+        upper_intercept = yh - slope * xh
+        upper_at_end = slope * last_x + upper_intercept
+
+        mid_at_end = (upper_at_end + lower_at_end) / 2
+        channel_height = upper_at_end - lower_at_end
+
+        if channel_height > 0:
+            upper_third = upper_at_end - channel_height / 3
+            lower_third = lower_at_end + channel_height / 3
+            return {
+                "slope": slope,
+                "intercept": y1l - slope * x1l,
+                "std": channel_height / 3,
+                "mid": round(mid_at_end, 2),
+                "upper": round(upper_at_end, 2),
+                "lower": round(lower_at_end, 2),
+                "upper_third": round(upper_third, 2),
+                "lower_third": round(lower_third, 2),
+                "method": "parallel_2L1H"
+            }
+
+    # Fallback linear regression
+    x = np.arange(n)
     slope, intercept = np.polyfit(x, closes, 1)
     residuals = closes - (slope * x + intercept)
     std = np.std(residuals)
-    last_x = len(closes) - 1
     mid   = slope * last_x + intercept
     upper = mid + 1.5 * std
     lower = mid - 1.5 * std
@@ -121,6 +216,7 @@ def calc_equidistant_channel(df):
         "slope": slope, "intercept": intercept, "std": std,
         "mid": round(mid, 2), "upper": round(upper, 2), "lower": round(lower, 2),
         "upper_third": round(upper_third, 2), "lower_third": round(lower_third, 2),
+        "method": "regression_fallback"
     }
 
 def get_h4_bias(ch, price):
