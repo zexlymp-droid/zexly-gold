@@ -18,7 +18,9 @@ jobs:
       - name: Restore offset cache
         uses: actions/cache@v3
         with:
-          path: tg_offset.json
+          path: |
+            tg_offset.json
+            zexly_channel.json
           key: tg-offset-${{ github.run_id }}
           restore-keys: tg-offset-
 
@@ -37,5 +39,7 @@ jobs:
       - name: Save offset cache
         uses: actions/cache@v3
         with:
-          path: tg_offset.json
+          path: |
+            tg_offset.json
+            zexly_channel.json
           key: tg-offset-${{ github.run_id }}
