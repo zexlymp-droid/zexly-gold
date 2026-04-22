@@ -22,9 +22,12 @@ jobs:
           key: tg-offset-${{ github.run_id }}
           restore-keys: tg-offset-
 
-      - name: Install Dependencies
-        run: |
-          pip install requests yfinance pytz numpy pandas python-dotenv tzdata matplotlib
+       - name: Install Dependencies
+        run:
+          pip install requests yfinance pytz numpy pandas python-dotenv tzdata matplotlib Pillow playwright
+          playwright install chromium
+          pip install playwright
+          playwright install chromium
 
       - name: Run Script
         env:

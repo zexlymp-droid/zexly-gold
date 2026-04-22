@@ -420,47 +420,142 @@ def calc_sl_tp(price, bias, sd_base, sr_levels, ch_m30):
 #  CHART — TradingView via chart-img.com
 # ══════════════════════════════════════════════════════════════════
 
-def generate_chart(bias, stars, tf="30"):
-    """
-    Ambil chart TradingView realtime via chart-img.com API.
-    tf: 1=M1, 5=M5, 15=M15, 30=M30, 60=H1, 240=H4
-    """
-    path = "zexly_chart.png"
-
-    if not CHARTIMG_KEY:
-        log.warning("CHARTIMG_KEY tidak ada, skip chart")
-        return None
-
-    # Interval map untuk chart-img
-    interval_map = {
-        "1": "1m", "5": "5m", "15": "15m",
-        "30": "30m", "60": "1h", "240": "4h"
-    }
-    interval = interval_map.get(str(tf), "30m")
-
+async def take_screenshot(tf="5"):
+    """Screenshot TradingView via Playwright."""
+    interval_map = {"1":"1","5":"5","15":"15","30":"30","60":"60","240":"240"}
+    interval = interval_map.get(str(tf), "5")
+    url = (
+        f"https://s.tradingview.com/widgetembed/"
+        f"?symbol=OANDA:XAUUSD&interval={interval}"
+        f"&theme=dark&style=1&locale=id"
+        f"&toolbar_bg=%23131722"
+    )
+    path = f"zexly_chart_{tf}.png"
     try:
-        url = "https://api.chart-img.com/v1/tradingview/advanced-chart"
-        params = {
-            "symbol":   "OANDA:XAUUSD",
-            "interval": interval,
-            "theme":    "dark",
-            "studies":  "RSI@tv-basicstudies",
-            "width":    800,
-            "height":   600,
-            "key":      CHARTIMG_KEY,
-        }
-        resp = requests.get(url, params=params, timeout=30)
-        if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("image"):
-            with open(path, "wb") as f:
-                f.write(resp.content)
-            log.info(f"Chart TradingView tersimpan: {path}")
-            return path
-        else:
-            log.error(f"chart-img error: {resp.status_code} — {resp.text[:200]}")
-            return None
+        from playwright.async_api import async_playwright
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            ctx = await browser.new_context(viewport={"width": 1280, "height": 720})
+            page = await ctx.new_page()
+            await page.goto(url, wait_until="networkidle", timeout=30000)
+            import asyncio
+            await asyncio.sleep(6)
+            await page.screenshot(path=path)
+            await browser.close()
+        log.info(f"Screenshot tersimpan: {path}")
+        return path
     except Exception as e:
-        log.error(f"Chart error: {e}")
+        log.error(f"Screenshot error: {e}")
         return None
+
+def overlay_annotations(img_path, ch_h4, ch_m30, sd_base, sr_levels, price, bias, stars):
+    """Overlay anotasi ZEMETHOD di atas screenshot TradingView pakai PIL."""
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        import math
+
+        img = Image.open(img_path).convert("RGBA")
+        w, h = img.size
+
+        # Hitung price range dari channel
+        price_min = ch_h4["lower"] - 50
+        price_max = ch_h4["upper"] + 50
+        price_range = price_max - price_min
+
+        # Chart area (approximate — TradingView widget)
+        chart_top    = 40
+        chart_bottom = h - 60
+        chart_h      = chart_bottom - chart_top
+
+        def price_to_y(p):
+            """Konversi harga ke pixel Y."""
+            ratio = (price_max - p) / price_range
+            return int(chart_top + ratio * chart_h)
+
+        overlay = Image.new("RGBA", img.size, (0,0,0,0))
+        draw = ImageDraw.Draw(overlay)
+
+        # ─── H4 Upper ─────────────────────────────
+        y_upper = price_to_y(ch_h4["upper"])
+        draw.line([(0, y_upper), (w, y_upper)], fill=(255,76,76,200), width=2)
+        draw.text((5, y_upper-14), f"H4 Upper {ch_h4['upper']}", fill=(255,76,76,255))
+
+        # ─── H4 Mid ───────────────────────────────
+        y_mid = price_to_y(ch_h4["mid"])
+        draw.line([(0, y_mid), (w, y_mid)], fill=(255,255,255,100), width=1)
+
+        # ─── H4 Lower ─────────────────────────────
+        y_lower = price_to_y(ch_h4["lower"])
+        draw.line([(0, y_lower), (w, y_lower)], fill=(0,200,83,200), width=2)
+        draw.text((5, y_lower+2), f"H4 Lower {ch_h4['lower']}", fill=(0,200,83,255))
+
+        # ─── Upper Zone fill ──────────────────────
+        y_upper_third = price_to_y(ch_h4["upper_third"])
+        draw.rectangle([(0, y_upper), (w, y_upper_third)], fill=(255,76,76,30))
+
+        # ─── Lower Zone fill ──────────────────────
+        y_lower_third = price_to_y(ch_h4["lower_third"])
+        draw.rectangle([(0, y_lower_third), (w, y_lower)], fill=(0,200,83,30))
+
+        # ─── M30 Channel ──────────────────────────
+        y_m30_upper = price_to_y(ch_m30["upper"])
+        draw.line([(0, y_m30_upper), (w, y_m30_upper)], fill=(255,140,0,150), width=1)
+        draw.text((5, y_m30_upper-14), f"M30 Upper {ch_m30['upper']}", fill=(255,140,0,200))
+
+        y_m30_lower = price_to_y(ch_m30["lower"])
+        draw.line([(0, y_m30_lower), (w, y_m30_lower)], fill=(30,144,255,150), width=1)
+        draw.text((5, y_m30_lower+2), f"M30 Lower {ch_m30['lower']}", fill=(30,144,255,200))
+
+        # ─── S&D Base Zone ────────────────────────
+        if sd_base and sd_base.get("found"):
+            base_color = (0,200,83,60) if bias == "BUY" else (255,76,76,60)
+            base_border = (0,200,83,200) if bias == "BUY" else (255,76,76,200)
+            y_bh = price_to_y(sd_base["base_high"])
+            y_bl = price_to_y(sd_base["base_low"])
+            draw.rectangle([(0, y_bh), (w, y_bl)], fill=base_color)
+            draw.line([(0, y_bh), (w, y_bh)], fill=base_border, width=1)
+            draw.line([(0, y_bl), (w, y_bl)], fill=base_border, width=1)
+            y_bm = price_to_y(sd_base["base_mid"])
+            draw.text((8, y_bm-8), f"{sd_base['type']} Zone", fill=base_border)
+
+        # ─── S&R Levels ───────────────────────────
+        for lvl in sr_levels:
+            y_sr = price_to_y(lvl)
+            draw.line([(0, y_sr), (w, y_sr)], fill=(255,215,0,150), width=1)
+            draw.text((w-120, y_sr-12), f"S&R {lvl}", fill=(255,215,0,200))
+
+        # ─── Price Line ───────────────────────────
+        y_price = price_to_y(price)
+        draw.line([(0, y_price), (w, y_price)], fill=(255,215,0,230), width=2)
+        draw.rectangle([(w-110, y_price-12), (w, y_price+4)], fill=(255,215,0,200))
+        draw.text((w-108, y_price-11), f"${price}", fill=(0,0,0,255))
+
+        # ─── Signal Label ─────────────────────────
+        stars_str = "★" * stars + "☆" * (4-stars)
+        sig_color = (0,200,83,230) if bias == "BUY" else (255,76,76,230)
+        sig_txt = f"{'▲ BUY' if bias == 'BUY' else '▼ SELL'}  {stars_str}"
+        draw.rectangle([(10, 50), (200, 80)], fill=(0,0,0,180))
+        draw.text((14, 54), sig_txt, fill=sig_color)
+
+        # Merge overlay
+        out = Image.alpha_composite(img, overlay).convert("RGB")
+        out.save(img_path)
+        log.info("Overlay anotasi selesai")
+        return img_path
+
+    except Exception as e:
+        log.error(f"Overlay error: {e}")
+        return img_path
+
+def generate_chart(bias, stars, tf="5", ch_h4=None, ch_m30=None,
+                   sd_base=None, sr_levels=None, price=None):
+    """Screenshot TradingView + overlay anotasi ZEMETHOD."""
+    import asyncio
+    path = asyncio.run(take_screenshot(tf))
+    if path and ch_h4 and ch_m30 and price:
+        path = overlay_annotations(path, ch_h4, ch_m30,
+                                   sd_base, sr_levels or [], price, bias, stars)
+    return path
 
 # ══════════════════════════════════════════════════════════════════
 #  TELEGRAM
@@ -619,7 +714,7 @@ def handle_commands():
                 sl_tp   = calc_sl_tp(price, bias, sd_base, sr_lvls, ch_m30)
                 caption = format_signal_msg(price, bias, stars, reasons, sd_base,
                                             trigger, sr_flip, sl_tp, rsi, session, ch_h4, ch_m30)
-                chart = generate_chart(bias, stars, tf="5")
+                chart = generate_chart(bias, stars, tf="5", ch_h4=ch_h4, ch_m30=ch_m30, sd_base=sd_base, sr_levels=sr_levels, price=price)
                 send_telegram(caption, chart, chat_id=chat_id)
 
             elif text == "/force":
@@ -634,7 +729,7 @@ def handle_commands():
                 caption = format_signal_msg(price, force_bias, stars, reasons, sd_base,
                                             trigger, sr_flip, sl_tp, rsi, session,
                                             ch_h4, ch_m30, force=True)
-                chart = generate_chart(force_bias, stars, tf="5")
+                chart = generate_chart(force_bias, stars, tf="5", ch_h4=ch_h4, ch_m30=ch_m30, sd_base=sd_base, sr_levels=sr_lvls, price=price)
                 send_telegram(caption, chart, chat_id=chat_id)
 
         elif text == "/status":
@@ -709,7 +804,7 @@ def run_scan():
     caption = format_signal_msg(price, bias, stars, star_reasons, sd_base,
                                 m1_trigger, sr_flip, sl_tp, rsi_m15,
                                 session_name, ch_h4, ch_m30)
-    chart   = generate_chart(bias, stars, tf="5")
+    chart   = generate_chart(bias, stars, tf="5", ch_h4=ch_h4, ch_m30=ch_m30, sd_base=sd_base, sr_levels=sr_levels, price=price)
 
     send_telegram(caption, chart)
     mark_alerted(signal_key)
