@@ -365,11 +365,14 @@ TF_YFINANCE = {
     "H4":  ("2mo", "1h"),
 }
 
-def generate_chart(tf="M5"):
+def generate_chart(tf="M5", entry=None, sl=None, tp1=None, tp2=None, sr_levels=None, sd_base=None):
     try:
         import mplfinance as mpf
         import matplotlib
         matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import matplotlib.lines as mlines
+
         tf_up = tf.upper()
         period, interval = TF_YFINANCE.get(tf_up, ("3d", "5m"))
         df = yf.Ticker("GC=F").history(period=period, interval=interval)
@@ -381,14 +384,47 @@ def generate_chart(tf="M5"):
             df = df.resample("4h").agg({"Open":"first","High":"max","Low":"min","Close":"last","Volume":"sum"}).dropna()
         df = df.tail(80)
         path = f"zexly_chart_{tf}.png"
+
         mc = mpf.make_marketcolors(up="#26a69a",down="#ef5350",edge="inherit",wick="inherit",volume={"up":"#26a69a","down":"#ef5350"})
         style = mpf.make_mpf_style(marketcolors=mc,base_mpf_style="nightclouds",gridstyle="--",gridcolor="#2a2a2a",facecolor="#131722",figcolor="#131722",rc={"axes.labelcolor":"#d1d4dc","xtick.color":"#d1d4dc","ytick.color":"#d1d4dc"})
-        mpf.plot(df,type="candle",style=style,title=f" XAUUSD {tf_up}",ylabel="Price (USD)",volume=True,figsize=(12,7),savefig=dict(fname=path,dpi=120,bbox_inches="tight"))
+
+        apds = []
+        if entry:    apds.append(mpf.make_addplot([entry]*len(df), color="#00bcd4", linestyle="--", width=1.5, secondary_y=False))
+        if sl:       apds.append(mpf.make_addplot([sl]*len(df),    color="#ef5350", linestyle="--", width=1.5, secondary_y=False))
+        if tp1:      apds.append(mpf.make_addplot([tp1]*len(df),   color="#26a69a", linestyle="--", width=1.2, secondary_y=False))
+        if tp2:      apds.append(mpf.make_addplot([tp2]*len(df),   color="#66bb6a", linestyle=":",  width=1.2, secondary_y=False))
+        if sr_levels:
+            for lv in sr_levels:
+                apds.append(mpf.make_addplot([lv]*len(df), color="#ff9800", linestyle="-", width=0.8, secondary_y=False))
+
+        plot_kwargs = dict(type="candle", style=style, title=f" XAUUSD {tf_up}",
+                           ylabel="Price (USD)", volume=True, figsize=(12,7), returnfig=True)
+        if apds: plot_kwargs["addplot"] = apds
+        fig, axes = mpf.plot(df, **plot_kwargs)
+        ax = axes[0]
+
+        if sd_base and sd_base.get("found"):
+            ax.axhspan(sd_base["base_low"], sd_base["base_high"], alpha=0.15, color="#ff9800")
+            ax.axhline(sd_base["base_mid"], color="#ff9800", linestyle="-", linewidth=0.8, alpha=0.6)
+
+        legend_items = []
+        if entry: legend_items.append(mlines.Line2D([],[],color="#00bcd4",linestyle="--",label=f"Entry {entry}"))
+        if sl:    legend_items.append(mlines.Line2D([],[],color="#ef5350",linestyle="--",label=f"SL {sl}"))
+        if tp1:   legend_items.append(mlines.Line2D([],[],color="#26a69a",linestyle="--",label=f"TP1 {tp1}"))
+        if tp2:   legend_items.append(mlines.Line2D([],[],color="#66bb6a",linestyle=":",label=f"TP2 {tp2}"))
+        if legend_items: ax.legend(handles=legend_items, loc="upper left", fontsize=8, framealpha=0.3)
+
+        plt.savefig(path, dpi=120, bbox_inches="tight", facecolor="#131722")
+        plt.close(fig)
         log.info(f"Chart {tf_up} generated: {path}")
         return path
     except Exception as e:
         log.error(f"Chart error: {e}")
         return None
+
+# ══════════════════════════════════════════════════════════════════
+#  FORMAT PESAN
+# ══════════════════════════════════════════════════════════════════
 
 def format_signal_msg(price, bias, stars, reasons, sd_base,
                       trigger, sr_flip, sl_tp, rsi, session, ch_h4, ch_m30, force=False):
@@ -483,7 +519,7 @@ async def do_full_scan(force=False):
         "tp1_hit": False, "tp2_hit": False, "sl_hit": False
     })
 
-    chart = generate_chart("M5")
+    chart = generate_chart("M5", entry=price, sl=sl_tp["sl"], tp1=sl_tp["tp1"], tp2=sl_tp["tp2"], sr_levels=sr_lvls, sd_base=sd_base)
     return caption, chart
 
 # ══════════════════════════════════════════════════════════════════
