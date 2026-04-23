@@ -356,33 +356,39 @@ INTERVAL_MAP = {
     "M1":"1m","M5":"5m","M15":"15m","M30":"30m","H1":"1h","H4":"4h"
 }
 
+TF_YFINANCE = {
+    "M1":  ("1d",  "1m"),
+    "M5":  ("3d",  "5m"),
+    "M15": ("5d",  "15m"),
+    "M30": ("10d", "30m"),
+    "H1":  ("1mo", "1h"),
+    "H4":  ("2mo", "1h"),
+}
+
 def generate_chart(tf="M5"):
-    if not CHARTIMG_KEY:
-        log.warning("CHARTIMG_KEY tidak ada")
-        return None
-    interval = INTERVAL_MAP.get(tf.upper(), "5m")
-    path = f"zexly_chart_{tf}.png"
     try:
-        resp = requests.get(
-            "https://api.chart-img.com/v1/tradingview/advanced-chart",
-            params={
-                "symbol": "OANDA:XAUUSD", "interval": interval,
-                "theme": "dark", "studies": "RSI@tv-basicstudies",
-                "width": 800, "height": 500, "key": CHARTIMG_KEY,
-            }, timeout=30
-        )
-        if resp.status_code == 200 and "image" in resp.headers.get("content-type",""):
-            with open(path,"wb") as f: f.write(resp.content)
-            return path
-        log.error(f"chart-img {resp.status_code}: {resp.text[:100]}")
-        return None
+        import mplfinance as mpf
+        import matplotlib
+        matplotlib.use("Agg")
+        tf_up = tf.upper()
+        period, interval = TF_YFINANCE.get(tf_up, ("3d", "5m"))
+        df = yf.Ticker("GC=F").history(period=period, interval=interval)
+        if df is None or df.empty:
+            log.error("Chart: data kosong")
+            return None
+        df.dropna(inplace=True)
+        if tf_up == "H4":
+            df = df.resample("4h").agg({"Open":"first","High":"max","Low":"min","Close":"last","Volume":"sum"}).dropna()
+        df = df.tail(80)
+        path = f"zexly_chart_{tf}.png"
+        mc = mpf.make_marketcolors(up="#26a69a",down="#ef5350",edge="inherit",wick="inherit",volume={"up":"#26a69a","down":"#ef5350"})
+        style = mpf.make_mpf_style(marketcolors=mc,base_mpf_style="nightclouds",gridstyle="--",gridcolor="#2a2a2a",facecolor="#131722",figcolor="#131722",rc={"axes.labelcolor":"#d1d4dc","xtick.color":"#d1d4dc","ytick.color":"#d1d4dc"})
+        mpf.plot(df,type="candle",style=style,title=f" XAUUSD {tf_up}",ylabel="Price (USD)",volume=True,figsize=(12,7),savefig=dict(fname=path,dpi=120,bbox_inches="tight"))
+        log.info(f"Chart {tf_up} generated: {path}")
+        return path
     except Exception as e:
         log.error(f"Chart error: {e}")
         return None
-
-# ══════════════════════════════════════════════════════════════════
-#  FORMAT PESAN
-# ══════════════════════════════════════════════════════════════════
 
 def format_signal_msg(price, bias, stars, reasons, sd_base,
                       trigger, sr_flip, sl_tp, rsi, session, ch_h4, ch_m30, force=False):
