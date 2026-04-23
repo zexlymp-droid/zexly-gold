@@ -1,15 +1,22 @@
 """
-╔══════════════════════════════════════════════════╗
-║   ZEXLY METHOD BOT — XAUUSD AUTO SCANNER        ║
-║   Equidistant Channel + S&D + Price Action       ║
-║   Sesuai ZEMETHOD Ebook (H4 → M30 → M5 → M1)   ║
-║   + Command Handler: /chart /scan /status /force ║
-║   + TradingView Chart via chart-img.com          ║
-╚══════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════╗
+║   ZEXLY METHOD BOT v3.0 — XAUUSD AUTO SCANNER          ║
+║   Parallel Channel + S&D + Price Action                  ║
+║   Sesuai ZEMETHOD Ebook (H4 → M30 → M5 → M1)           ║
+║                                                          ║
+║   Commands:                                              ║
+║   /setchannel [p1] [p2] [p3] — set channel manual      ║
+║   /delchannel                 — hapus channel manual    ║
+║   /scan                       — scan manual             ║
+║   /force                      — sinyal paksa            ║
+║   /chart [tf]                 — chart realtime          ║
+║   /status                     — status bot              ║
+║   /summary                    — ringkasan harian        ║
+╚══════════════════════════════════════════════════════════╝
 """
 
-import os, logging, json
-from datetime import datetime
+import os, logging, json, re
+from datetime import datetime, timedelta
 import pytz
 import numpy as np
 import pandas as pd
@@ -19,14 +26,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-TOKEN       = os.getenv("TELEGRAM_TOKEN")
-CHAT_ID     = os.getenv("TELEGRAM_CHAT_ID", "-1003986432270")
+# ─── CONFIG ────────────────────────────────────────────────────
+TOKEN        = os.getenv("TELEGRAM_TOKEN")
+CHAT_ID      = os.getenv("TELEGRAM_CHAT_ID", "-1003986432270")
 CHARTIMG_KEY = os.getenv("CHARTIMG_KEY", "")
-WIB         = pytz.timezone("Asia/Jakarta")
+ZEXLY_CH_ENV = os.getenv("ZEXLY_CHANNEL", "")  # format: "4920,4880,4660"
+WIB          = pytz.timezone("Asia/Jakarta")
 
 STATE_FILE   = "zexly_state.json"
 OFFSET_FILE  = "tg_offset.json"
 CHANNEL_FILE = "zexly_channel.json"
+POSITION_FILE = "zexly_position.json"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,101 +44,166 @@ logging.basicConfig(
     datefmt="%H:%M:%S"
 )
 log = logging.getLogger("ZEXLY")
-key_loaded = bool(os.getenv("CHARTIMG_KEY"))
-log.info(f"CHARTIMG_KEY loaded: {key_loaded}")
 
 # ══════════════════════════════════════════════════════════════════
-#  STATE & ANTI-SPAM
+#  STATE MANAGEMENT
 # ══════════════════════════════════════════════════════════════════
 
-def load_state():
+def load_json(path, default=None):
     try:
-        with open(STATE_FILE) as f: return json.load(f)
-    except Exception: return {}
+        with open(path) as f:
+            return json.load(f)
+    except Exception:
+        return default if default is not None else {}
 
-def save_state(state):
-    with open(STATE_FILE, "w") as f: json.dump(state, f)
+def save_json(path, data):
+    with open(path, "w") as f:
+        json.dump(data, f)
 
 def already_alerted(signal_key):
-    state = load_state()
+    state = load_json(STATE_FILE)
     today = datetime.now(WIB).strftime("%Y-%m-%d")
     return state.get("date") == today and state.get("key") == signal_key
 
 def mark_alerted(signal_key):
     today = datetime.now(WIB).strftime("%Y-%m-%d")
-    save_state({"date": today, "key": signal_key})
+    save_json(STATE_FILE, {"date": today, "key": signal_key})
 
 def load_offset():
-    try:
-        with open(OFFSET_FILE) as f: return json.load(f).get("offset", 0)
-    except Exception: return 0
+    return load_json(OFFSET_FILE, {"offset": 0}).get("offset", 0)
 
 def save_offset(offset):
-    with open(OFFSET_FILE, "w") as f: json.dump({"offset": offset}, f)
-def load_manual_channel():
-    # Prioritas 1: dari env variable ZEXLY_CHANNEL (format: "upper,mid_or_p2,lower")
-    env_ch = os.getenv("ZEXLY_CHANNEL", "")
-    if env_ch:
-        try:
-            parts = [float(x) for x in env_ch.split(",")]
-            if len(parts) == 3:
-                return calc_channel_from_3points(parts[0], parts[1], parts[2])
-        except Exception:
-            pass
-    # Prioritas 2: dari file lokal
-    try:
-        with open(CHANNEL_FILE) as f:
-            return json.load(f)
-    except Exception:
-        return None
+    save_json(OFFSET_FILE, {"offset": offset})
 
-def save_manual_channel(data):
-    with open(CHANNEL_FILE, "w") as f:
-        json.dump(data, f)
+# ══════════════════════════════════════════════════════════════════
+#  CHANNEL MANAGEMENT
+# ══════════════════════════════════════════════════════════════════
 
 def calc_channel_from_3points(p1, p2, p3):
-    """
-    Hitung parallel channel dari 3 titik harga.
-    Otomatis detect 2H+1L atau 2L+1H.
-    p1, p2, p3 = list of float (harga)
-    """
-    pts = sorted([p1, p2, p3], reverse=True)
+    pts    = sorted([p1, p2, p3], reverse=True)
     high1, mid_pt, low1 = pts[0], pts[1], pts[2]
-
-    # Cek apakah 2 upper + 1 lower atau 2 lower + 1 upper
     diff_top = abs(high1 - mid_pt)
     diff_bot = abs(mid_pt - low1)
-
     if diff_top < diff_bot:
-        # 2 upper (high1, mid_pt) + 1 lower (low1)
         upper = (high1 + mid_pt) / 2
         lower = low1
         mode  = "2H+1L"
     else:
-        # 1 upper (high1) + 2 lower (mid_pt, low1)
         upper = high1
         lower = (mid_pt + low1) / 2
         mode  = "1H+2L"
-
     channel_height = upper - lower
     upper_third    = upper - channel_height / 3
     lower_third    = lower + channel_height / 3
     mid            = (upper + lower) / 2
-
     return {
-        "upper":       round(upper, 2),
-        "lower":       round(lower, 2),
-        "mid":         round(mid, 2),
-        "upper_third": round(upper_third, 2),
-        "lower_third": round(lower_third, 2),
-        "slope":       0,
-        "intercept":   lower,
-        "std":         round(channel_height / 3, 2),
-        "mode":        mode,
-        "manual":      True,
-        "points":      [p1, p2, p3]
+        "upper": round(upper, 2), "lower": round(lower, 2),
+        "mid": round(mid, 2), "upper_third": round(upper_third, 2),
+        "lower_third": round(lower_third, 2), "slope": 0,
+        "intercept": lower, "std": round(channel_height / 3, 2),
+        "mode": mode, "manual": True, "points": [p1, p2, p3]
     }
 
+def load_manual_channel():
+    # Prioritas 1: env variable (GitHub Secrets)
+    if ZEXLY_CH_ENV:
+        try:
+            parts = [float(x) for x in ZEXLY_CH_ENV.split(",")]
+            if len(parts) == 3:
+                return calc_channel_from_3points(*parts)
+        except Exception:
+            pass
+    # Prioritas 2: file lokal
+    data = load_json(CHANNEL_FILE)
+    return data if data else None
+
+def save_manual_channel(data):
+    save_json(CHANNEL_FILE, data)
+
+def delete_manual_channel():
+    try:
+        os.remove(CHANNEL_FILE)
+    except Exception:
+        pass
+
+# ══════════════════════════════════════════════════════════════════
+#  POSITION TRACKING (untuk notif TP hit)
+# ══════════════════════════════════════════════════════════════════
+
+def save_position(bias, entry, sl, tp1, tp2):
+    save_json(POSITION_FILE, {
+        "bias": bias, "entry": entry,
+        "sl": sl, "tp1": tp1, "tp2": tp2,
+        "tp1_hit": False, "tp2_hit": False,
+        "sl_hit": False,
+        "time": get_waktu()
+    })
+
+def load_position():
+    return load_json(POSITION_FILE)
+
+def clear_position():
+    try:
+        os.remove(POSITION_FILE)
+    except Exception:
+        pass
+
+def check_tp_sl_hit(price):
+    pos = load_position()
+    if not pos or not pos.get("bias"):
+        return
+
+    bias  = pos["bias"]
+    entry = pos["entry"]
+    sl    = pos["sl"]
+    tp1   = pos["tp1"]
+    tp2   = pos["tp2"]
+    tp1_hit = pos.get("tp1_hit", False)
+    tp2_hit = pos.get("tp2_hit", False)
+    sl_hit  = pos.get("sl_hit", False)
+
+    if sl_hit or tp2_hit:
+        clear_position()
+        return
+
+    alerts = []
+
+    if bias == "SELL":
+        if not tp1_hit and price <= tp1:
+            alerts.append(f"🎯 *TP1 HIT!* `${tp1}`\nTutup 70% posisi & geser SL ke `${entry}` (breakeven)")
+            pos["tp1_hit"] = True
+        if tp1_hit and not tp2_hit and price <= tp2:
+            alerts.append(f"🏆 *TP2 HIT!* `${tp2}`\nTutup sisa 30% posisi — FULL PROFIT!")
+            pos["tp2_hit"] = True
+        if not sl_hit and price >= sl:
+            alerts.append(f"🛑 *SL HIT!* `${sl}`\nPosisi ditutup — loss terkontrol.")
+            pos["sl_hit"] = True
+    elif bias == "BUY":
+        if not tp1_hit and price >= tp1:
+            alerts.append(f"🎯 *TP1 HIT!* `${tp1}`\nTutup 70% posisi & geser SL ke `${entry}` (breakeven)")
+            pos["tp1_hit"] = True
+        if tp1_hit and not tp2_hit and price >= tp2:
+            alerts.append(f"🏆 *TP2 HIT!* `${tp2}`\nTutup sisa 30% posisi — FULL PROFIT!")
+            pos["tp2_hit"] = True
+        if not sl_hit and price <= sl:
+            alerts.append(f"🛑 *SL HIT!* `${sl}`\nPosisi ditutup — loss terkontrol.")
+            pos["sl_hit"] = True
+
+    for alert in alerts:
+        msg = (
+            f"{alert}\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"Entry: `${entry}` | Price: `${price}`\n"
+            f"SL: `${sl}` | TP1: `${tp1}` | TP2: `${tp2}`\n"
+            f"`{get_waktu()}`"
+        )
+        send_telegram(msg)
+        log.info(f"Alert: {alert[:30]}")
+
+    save_json(POSITION_FILE, pos)
+
+    if pos.get("sl_hit") or pos.get("tp2_hit"):
+        clear_position()
 
 # ══════════════════════════════════════════════════════════════════
 #  JAM TRADING (ZEMETHOD Bab 07)
@@ -136,7 +211,7 @@ def calc_channel_from_3points(p1, p2, p3):
 
 def get_session_status():
     now = datetime.now(WIB)
-    t = now.hour * 60 + now.minute
+    t   = now.hour * 60 + now.minute
     if 14*60 <= t < 19*60:   return True,  "London Open (TERBAIK)"
     elif 20*60 <= t < 23*60: return True,  "New York Session (BAIK)"
     elif 19*60 <= t < 20*60: return True,  "NY-London Overlap (HATI-HATI)"
@@ -146,12 +221,62 @@ def get_waktu():
     return datetime.now(WIB).strftime("%d %b %Y | %H:%M WIB")
 
 # ══════════════════════════════════════════════════════════════════
+#  NEWS FILTER — Forex Factory scraping
+# ══════════════════════════════════════════════════════════════════
+
+def get_high_impact_news():
+    """
+    Scrape Forex Factory untuk high impact news USD hari ini.
+    Return list of {"time": datetime, "title": str}
+    """
+    try:
+        today = datetime.now(WIB).strftime("%b%d.%Y").lower()
+        url   = f"https://www.forexfactory.com/calendar?day={today}"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code != 200:
+            return []
+
+        # Cari high impact USD news
+        pattern = r'impact--red.*?<td class="calendar__currency">(.*?)</td>.*?<td class="calendar__event">(.*?)</td>.*?<td class="calendar__time">(.*?)</td>'
+        matches = re.findall(pattern, resp.text, re.DOTALL)
+
+        news = []
+        now_wib = datetime.now(WIB)
+        for currency, title, time_str in matches:
+            currency = re.sub(r'<.*?>', '', currency).strip()
+            title    = re.sub(r'<.*?>', '', title).strip()
+            time_str = re.sub(r'<.*?>', '', time_str).strip()
+            if "USD" not in currency:
+                continue
+            try:
+                t = datetime.strptime(f"{now_wib.strftime('%Y-%m-%d')} {time_str}", "%Y-%m-%d %I:%M%p")
+                t = WIB.localize(t) + timedelta(hours=12)  # EST to WIB approx
+                news.append({"time": t, "title": title})
+            except Exception:
+                continue
+        return news
+    except Exception as e:
+        log.warning(f"News fetch gagal: {e}")
+        return []
+
+def is_near_news(buffer_minutes=30):
+    """Cek apakah sekarang dalam 30 menit sebelum/sesudah high impact news."""
+    news_list = get_high_impact_news()
+    now = datetime.now(WIB)
+    for news in news_list:
+        diff = abs((news["time"] - now).total_seconds() / 60)
+        if diff <= buffer_minutes:
+            return True, news["title"]
+    return False, ""
+
+# ══════════════════════════════════════════════════════════════════
 #  DATA FETCH
 # ══════════════════════════════════════════════════════════════════
 
 def fetch_data():
     try:
-        gold = yf.Ticker("GC=F")
+        gold   = yf.Ticker("GC=F")
         df_h4  = gold.history(period="2mo",  interval="1h")
         df_m30 = gold.history(period="10d",  interval="30m")
         df_m5  = gold.history(period="3d",   interval="5m")
@@ -166,32 +291,34 @@ def fetch_data():
         log.error(f"Gagal fetch data: {e}")
         return None
 
+def get_current_price():
+    try:
+        df = yf.Ticker("GC=F").history(period="1d", interval="1m")
+        return round(float(df["Close"].iloc[-1]), 2)
+    except Exception:
+        return None
+
 # ══════════════════════════════════════════════════════════════════
-#  EQUIDISTANT CHANNEL
+#  PARALLEL CHANNEL (auto fallback)
 # ══════════════════════════════════════════════════════════════════
 
 def find_swings(arr, order=5):
-    """Cari swing high dan swing low — minimal order candle di kiri & kanan."""
     highs, lows = [], []
     for i in range(order, len(arr) - order):
-        if all(arr[i] >= arr[i-j] for j in range(1, order+1)) and            all(arr[i] >= arr[i+j] for j in range(1, order+1)):
+        if all(arr[i] >= arr[i-j] for j in range(1, order+1)) and \
+           all(arr[i] >= arr[i+j] for j in range(1, order+1)):
             highs.append((i, float(arr[i])))
-        if all(arr[i] <= arr[i-j] for j in range(1, order+1)) and            all(arr[i] <= arr[i+j] for j in range(1, order+1)):
+        if all(arr[i] <= arr[i-j] for j in range(1, order+1)) and \
+           all(arr[i] <= arr[i+j] for j in range(1, order+1)):
             lows.append((i, float(arr[i])))
     return highs, lows
 
-def calc_equidistant_channel(df):
-    """
-    Parallel Channel — 2 swing high + 1 swing low (descending)
-    atau 2 swing low + 1 swing high (ascending).
-    Lower/upper line dibuat paralel satu sama lain.
-    Mirip cara gambar channel manual di TradingView.
-    """
+def calc_auto_channel(df):
     highs_arr = df["High"].values
     lows_arr  = df["Low"].values
     closes    = df["Close"].values
-    n = len(closes)
-    last_x = n - 1
+    n         = len(closes)
+    last_x    = n - 1
 
     swing_highs, swing_lows = find_swings(highs_arr, order=5)
     _, swing_lows2 = find_swings(lows_arr, order=5)
@@ -199,72 +326,52 @@ def calc_equidistant_channel(df):
     def line_at(x, x1, y1, slope):
         return y1 + slope * (x - x1)
 
-    # Coba descending channel: 2 swing high + 1 swing low
+    # Coba 2H + 1L
     if len(swing_highs) >= 2 and len(swing_lows2) >= 1:
         sh1, sh2 = swing_highs[-2], swing_highs[-1]
         x1h, y1h = sh1
         x2h, y2h = sh2
         slope = (y2h - y1h) / (x2h - x1h) if x2h != x1h else 0
-
-        # Upper line dari 2 swing high
         upper_at_end = line_at(last_x, x1h, y1h, slope)
-
-        # Lower line paralel melewati swing low terdekat
-        sl = swing_lows2[-1]
-        xl, yl = sl
+        xl, yl = swing_lows2[-1]
         lower_intercept = yl - slope * xl
         lower_at_end = slope * last_x + lower_intercept
-
-        # Mid line
-        mid_at_end = (upper_at_end + lower_at_end) / 2
         channel_height = upper_at_end - lower_at_end
-
-        # Pastiin upper > lower
-        if channel_height > 0:
-            upper_third = upper_at_end - channel_height / 3
-            lower_third = lower_at_end + channel_height / 3
+        if channel_height > 20:
+            mid = (upper_at_end + lower_at_end) / 2
             return {
-                "slope": slope,
-                "intercept": lower_intercept,
+                "slope": slope, "intercept": lower_intercept,
                 "std": channel_height / 3,
-                "mid": round(mid_at_end, 2),
+                "mid": round(mid, 2),
                 "upper": round(upper_at_end, 2),
                 "lower": round(lower_at_end, 2),
-                "upper_third": round(upper_third, 2),
-                "lower_third": round(lower_third, 2),
-                "method": "parallel_2H1L"
+                "upper_third": round(upper_at_end - channel_height/3, 2),
+                "lower_third": round(lower_at_end + channel_height/3, 2),
+                "mode": "auto_2H1L", "manual": False
             }
 
-    # Coba ascending channel: 2 swing low + 1 swing high
+    # Coba 2L + 1H
     if len(swing_lows2) >= 2 and len(swing_highs) >= 1:
         sl1, sl2 = swing_lows2[-2], swing_lows2[-1]
         x1l, y1l = sl1
         x2l, y2l = sl2
         slope = (y2l - y1l) / (x2l - x1l) if x2l != x1l else 0
-
         lower_at_end = line_at(last_x, x1l, y1l, slope)
-
-        sh = swing_highs[-1]
-        xh, yh = sh
+        xh, yh = swing_highs[-1]
         upper_intercept = yh - slope * xh
         upper_at_end = slope * last_x + upper_intercept
-
-        mid_at_end = (upper_at_end + lower_at_end) / 2
         channel_height = upper_at_end - lower_at_end
-
-        if channel_height > 0:
-            upper_third = upper_at_end - channel_height / 3
-            lower_third = lower_at_end + channel_height / 3
+        if channel_height > 20:
+            mid = (upper_at_end + lower_at_end) / 2
             return {
-                "slope": slope,
-                "intercept": y1l - slope * x1l,
+                "slope": slope, "intercept": y1l - slope*x1l,
                 "std": channel_height / 3,
-                "mid": round(mid_at_end, 2),
+                "mid": round(mid, 2),
                 "upper": round(upper_at_end, 2),
                 "lower": round(lower_at_end, 2),
-                "upper_third": round(upper_third, 2),
-                "lower_third": round(lower_third, 2),
-                "method": "parallel_2L1H"
+                "upper_third": round(upper_at_end - channel_height/3, 2),
+                "lower_third": round(lower_at_end + channel_height/3, 2),
+                "mode": "auto_2L1H", "manual": False
             }
 
     # Fallback linear regression
@@ -275,13 +382,12 @@ def calc_equidistant_channel(df):
     mid   = slope * last_x + intercept
     upper = mid + 1.5 * std
     lower = mid - 1.5 * std
-    upper_third = upper - (upper - lower) / 3
-    lower_third = lower + (upper - lower) / 3
     return {
         "slope": slope, "intercept": intercept, "std": std,
         "mid": round(mid, 2), "upper": round(upper, 2), "lower": round(lower, 2),
-        "upper_third": round(upper_third, 2), "lower_third": round(lower_third, 2),
-        "method": "regression_fallback"
+        "upper_third": round(upper - (upper-lower)/3, 2),
+        "lower_third": round(lower + (upper-lower)/3, 2),
+        "mode": "regression", "manual": False
     }
 
 def get_h4_bias(ch, price):
@@ -298,36 +404,44 @@ def calc_rsi(series, period=14):
     gain  = delta.clip(lower=0).rolling(period).mean()
     loss  = (-delta.clip(upper=0)).rolling(period).mean()
     rs    = gain / loss.replace(0, np.nan)
-    rsi   = 100 - (100 / (1 + rs))
-    return round(float(rsi.iloc[-1]), 1)
+    return round(float((100 - (100 / (1 + rs))).iloc[-1]), 1)
 
 # ══════════════════════════════════════════════════════════════════
-#  S&D BASE DETECTION
+#  S&D BASE — threshold dilonggarkan
 # ══════════════════════════════════════════════════════════════════
 
 def detect_sd_base(df, bias):
     bodies = np.abs(df["Close"].values - df["Open"].values)
     n = len(df)
     if n < 15: return None
-    for base_end in range(n - 3, n - 12, -1):
-        for base_len in range(2, 6):
+
+    for base_end in range(n - 2, n - 15, -1):
+        for base_len in range(2, 7):  # max 6 candle (dilonggarkan dari 5)
             base_start = base_end - base_len
             if base_start < 5: continue
+
             base_slice  = df.iloc[base_start:base_end + 1]
             base_range  = base_slice["High"].max() - base_slice["Low"].min()
             base_bodies = bodies[base_start:base_end + 1].mean()
             avg_body_before = bodies[max(0, base_start - 5):base_start].mean()
-            if avg_body_before == 0 or base_bodies > 0.5 * avg_body_before: continue
-            move_start = max(0, base_start - 5)
+
+            if avg_body_before == 0: continue
+            if base_bodies > 0.6 * avg_body_before: continue  # dilonggarkan dari 0.5
+
+            move_start = max(0, base_start - 6)
             move_slice = df.iloc[move_start:base_start]
             if len(move_slice) < 2: continue
+
             move_range  = move_slice["High"].max() - move_slice["Low"].min()
-            if base_range >= move_range: continue
+            if base_range >= move_range * 0.8: continue  # dilonggarkan
+
             move_bodies = bodies[move_start:base_start].mean()
-            if move_bodies < bodies.mean(): continue
+            if move_bodies < bodies.mean() * 0.8: continue  # dilonggarkan
+
             move_dir = "UP" if move_slice["Close"].iloc[-1] > move_slice["Close"].iloc[0] else "DOWN"
             if bias == "BUY"  and move_dir != "UP":   continue
             if bias == "SELL" and move_dir != "DOWN":  continue
+
             base_high = round(base_slice["High"].max(), 2)
             base_low  = round(base_slice["Low"].min(), 2)
             return {
@@ -341,14 +455,10 @@ def detect_sd_base(df, bias):
     return None
 
 # ══════════════════════════════════════════════════════════════════
-#  S&R LEVELS — FIX: filter level yang terlalu deket entry
+#  S&R LEVELS
 # ══════════════════════════════════════════════════════════════════
 
 def find_sr_levels(df, min_distance=15):
-    """
-    Cari max 3 level S&R terkuat dari swing high/low M30.
-    min_distance: jarak minimum dari harga sekarang (pips)
-    """
     highs, lows = df["High"].values, df["Low"].values
     price = float(df["Close"].iloc[-1])
     levels = []
@@ -356,7 +466,6 @@ def find_sr_levels(df, min_distance=15):
         if highs[i] > highs[i-1] and highs[i] > highs[i-2] and \
            highs[i] > highs[i+1] and highs[i] > highs[i+2]:
             lvl = round(highs[i], 2)
-            # Filter level yang terlalu deket harga sekarang
             if abs(lvl - price) >= min_distance:
                 levels.append(lvl)
         if lows[i] < lows[i-1] and lows[i] < lows[i-2] and \
@@ -382,10 +491,10 @@ def check_sr_flip_m5(df_m5, sr_levels, bias):
     prev_close = df_m5["Close"].iloc[-2]
     for level in sr_levels:
         if bias == "BUY" and prev_close < level and last_close > level:
-            return {"confirmed": True, "flip_type": "SUPPORT BARU", "flip_level": level,
+            return {"confirmed": True, "flip_type": "SUPPORT BARU",
                     "detail": f"M5 close {last_close:.2f} tembus ATAS {level:.2f}"}
         if bias == "SELL" and prev_close > level and last_close < level:
-            return {"confirmed": True, "flip_type": "RESISTANCE BARU", "flip_level": level,
+            return {"confirmed": True, "flip_type": "RESISTANCE BARU",
                     "detail": f"M5 close {last_close:.2f} tembus BAWAH {level:.2f}"}
     return {"confirmed": False}
 
@@ -400,9 +509,9 @@ def detect_m1_trigger(df_m1, bias):
     o1, c1c = c1["Open"], c1["Close"]
     h1, l1  = c1["High"], c1["Low"]
     o0, c0c = c0["Open"], c0["Close"]
-    body1  = abs(c1c - o1)
-    range1 = h1 - l1
-    body0  = abs(c0c - o0)
+    body1   = abs(c1c - o1)
+    range1  = h1 - l1
+    body0   = abs(c0c - o0)
     if range1 == 0: return {"found": False}
     upper_shadow = h1 - max(o1, c1c)
     lower_shadow = min(o1, c1c) - l1
@@ -421,59 +530,64 @@ def detect_m1_trigger(df_m1, bias):
     return {"found": False}
 
 # ══════════════════════════════════════════════════════════════════
-#  SISTEM BINTANG
+#  SISTEM BINTANG (ZEMETHOD Bab 05)
 # ══════════════════════════════════════════════════════════════════
 
 def calc_star_rating(bias_h4, sd_base, sr_flip, m1_trigger, ch_m30, price):
-    stars = 0
+    stars   = 0
     reasons = []
+
+    # Bintang 1 — Bias H4
     stars += 1
     reasons.append(f"★ Setup searah bias H4 ({bias_h4})")
+
+    # Bintang 2 — S&D Base valid
     if sd_base and sd_base.get("found"):
         stars += 1
         reasons.append(f"★ Pola {sd_base['type']} valid ({sd_base['candles_in_base']} candle di base)")
+
+    # Bintang 3 — Konfirmasi M5
     if sr_flip.get("confirmed"):
         stars += 1
-        reasons.append(f"★ M5 konfirmasi: {sr_flip['detail']}")
+        reasons.append(f"★ S&R Flip M5: {sr_flip['detail']}")
     elif sd_base and sd_base.get("found"):
-        if bias_h4 == "BUY" and price <= sd_base["base_high"]:
+        if bias_h4 == "BUY"  and price <= sd_base["base_high"]:
             stars += 1
             reasons.append("★ Harga masuk zona base RBR (konfirmasi M5)")
         elif bias_h4 == "SELL" and price >= sd_base["base_low"]:
             stars += 1
             reasons.append("★ Harga masuk zona base DBD (konfirmasi M5)")
+
+    # Bintang 4 — Trigger M1
     if m1_trigger.get("found"):
         stars += 1
         reasons.append(f"★ Trigger M1: {m1_trigger['type']} ({m1_trigger['strength']})")
+
     return stars, reasons
 
 # ══════════════════════════════════════════════════════════════════
-#  SL / TP — FIX: TP1 minimum 20 pips dari entry
+#  SL / TP
 # ══════════════════════════════════════════════════════════════════
 
 def calc_sl_tp(price, bias, sd_base, sr_levels, ch_m30):
-    buffer   = 7.0
-    min_tp1  = 20.0  # TP1 minimal 20 pips dari entry
+    buffer  = 7.0
+    min_tp1 = 20.0
 
     if bias == "BUY":
         sl_base = sd_base["base_low"] if sd_base and sd_base.get("found") else price - 15
         sl   = round(sl_base - buffer, 2)
         risk = abs(price - sl)
-        # TP1: S&R di atas harga, minimal 20 pips
         tp1_c = [lv for lv in sr_levels if lv > price + min_tp1]
-        tp1 = round(min(tp1_c), 2) if tp1_c else round(price + max(risk * 1.5, min_tp1), 2)
-        tp2 = round(ch_m30["upper"], 2)
-        # Pastiin TP2 di atas TP1
+        tp1   = round(min(tp1_c), 2) if tp1_c else round(price + max(risk * 1.5, min_tp1), 2)
+        tp2   = round(ch_m30["upper"], 2)
         if tp2 <= tp1: tp2 = round(price + risk * 3, 2)
     else:
         sl_base = sd_base["base_high"] if sd_base and sd_base.get("found") else price + 15
         sl   = round(sl_base + buffer, 2)
         risk = abs(sl - price)
-        # TP1: S&R di bawah harga, minimal 20 pips
         tp1_c = [lv for lv in sr_levels if lv < price - min_tp1]
-        tp1 = round(max(tp1_c), 2) if tp1_c else round(price - max(risk * 1.5, min_tp1), 2)
-        tp2 = round(ch_m30["lower"], 2)
-        # Pastiin TP2 di bawah TP1
+        tp1   = round(max(tp1_c), 2) if tp1_c else round(price - max(risk * 1.5, min_tp1), 2)
+        tp2   = round(ch_m30["lower"], 2)
         if tp2 >= tp1: tp2 = round(price - risk * 3, 2)
 
     rr1 = round(abs(tp1 - price) / risk, 2) if risk > 0 else 0
@@ -485,142 +599,36 @@ def calc_sl_tp(price, bias, sd_base, sr_levels, ch_m30):
 #  CHART — TradingView via chart-img.com
 # ══════════════════════════════════════════════════════════════════
 
-async def take_screenshot(tf="5"):
-    """Screenshot TradingView via Playwright."""
-    interval_map = {"1":"1","5":"5","15":"15","30":"30","60":"60","240":"240"}
-    interval = interval_map.get(str(tf), "5")
-    url = (
-        f"https://s.tradingview.com/widgetembed/"
-        f"?symbol=OANDA:XAUUSD&interval={interval}"
-        f"&theme=dark&style=1&locale=id"
-        f"&toolbar_bg=%23131722"
-    )
+INTERVAL_MAP = {
+    "M1": "1m", "M5": "5m", "M15": "15m",
+    "M30": "30m", "H1": "1h", "H4": "4h"
+}
+
+def generate_chart(tf="M5"):
+    if not CHARTIMG_KEY:
+        log.warning("CHARTIMG_KEY tidak ada")
+        return None
+    interval = INTERVAL_MAP.get(tf.upper(), "5m")
     path = f"zexly_chart_{tf}.png"
     try:
-        from playwright.async_api import async_playwright
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            ctx = await browser.new_context(viewport={"width": 1280, "height": 720})
-            page = await ctx.new_page()
-            await page.goto(url, wait_until="networkidle", timeout=30000)
-            import asyncio
-            await asyncio.sleep(6)
-            await page.screenshot(path=path)
-            await browser.close()
-        log.info(f"Screenshot tersimpan: {path}")
-        return path
+        url = "https://api.chart-img.com/v1/tradingview/advanced-chart"
+        params = {
+            "symbol": "OANDA:XAUUSD", "interval": interval,
+            "theme": "dark", "studies": "RSI@tv-basicstudies",
+            "width": 800, "height": 500, "key": CHARTIMG_KEY,
+        }
+        resp = requests.get(url, params=params, timeout=30)
+        if resp.status_code == 200 and "image" in resp.headers.get("content-type", ""):
+            with open(path, "wb") as f:
+                f.write(resp.content)
+            log.info(f"Chart {tf} tersimpan")
+            return path
+        else:
+            log.error(f"chart-img {resp.status_code}: {resp.text[:100]}")
+            return None
     except Exception as e:
-        log.error(f"Screenshot error: {e}")
+        log.error(f"Chart error: {e}")
         return None
-
-def overlay_annotations(img_path, ch_h4, ch_m30, sd_base, sr_levels, price, bias, stars):
-    """Overlay anotasi ZEMETHOD di atas screenshot TradingView pakai PIL."""
-    try:
-        from PIL import Image, ImageDraw, ImageFont
-        import math
-
-        img = Image.open(img_path).convert("RGBA")
-        w, h = img.size
-
-        # Hitung price range dari channel
-        price_min = ch_h4["lower"] - 50
-        price_max = ch_h4["upper"] + 50
-        price_range = price_max - price_min
-
-        # Chart area (approximate — TradingView widget)
-        chart_top    = 40
-        chart_bottom = h - 60
-        chart_h      = chart_bottom - chart_top
-
-        def price_to_y(p):
-            """Konversi harga ke pixel Y."""
-            ratio = (price_max - p) / price_range
-            return int(chart_top + ratio * chart_h)
-
-        overlay = Image.new("RGBA", img.size, (0,0,0,0))
-        draw = ImageDraw.Draw(overlay)
-
-        # ─── H4 Upper ─────────────────────────────
-        y_upper = price_to_y(ch_h4["upper"])
-        draw.line([(0, y_upper), (w, y_upper)], fill=(255,76,76,200), width=2)
-        draw.text((5, y_upper-14), f"H4 Upper {ch_h4['upper']}", fill=(255,76,76,255))
-
-        # ─── H4 Mid ───────────────────────────────
-        y_mid = price_to_y(ch_h4["mid"])
-        draw.line([(0, y_mid), (w, y_mid)], fill=(255,255,255,100), width=1)
-
-        # ─── H4 Lower ─────────────────────────────
-        y_lower = price_to_y(ch_h4["lower"])
-        draw.line([(0, y_lower), (w, y_lower)], fill=(0,200,83,200), width=2)
-        draw.text((5, y_lower+2), f"H4 Lower {ch_h4['lower']}", fill=(0,200,83,255))
-
-        # ─── Upper Zone fill ──────────────────────
-        y_upper_third = price_to_y(ch_h4["upper_third"])
-        draw.rectangle([(0, y_upper), (w, y_upper_third)], fill=(255,76,76,30))
-
-        # ─── Lower Zone fill ──────────────────────
-        y_lower_third = price_to_y(ch_h4["lower_third"])
-        draw.rectangle([(0, y_lower_third), (w, y_lower)], fill=(0,200,83,30))
-
-        # ─── M30 Channel ──────────────────────────
-        y_m30_upper = price_to_y(ch_m30["upper"])
-        draw.line([(0, y_m30_upper), (w, y_m30_upper)], fill=(255,140,0,150), width=1)
-        draw.text((5, y_m30_upper-14), f"M30 Upper {ch_m30['upper']}", fill=(255,140,0,200))
-
-        y_m30_lower = price_to_y(ch_m30["lower"])
-        draw.line([(0, y_m30_lower), (w, y_m30_lower)], fill=(30,144,255,150), width=1)
-        draw.text((5, y_m30_lower+2), f"M30 Lower {ch_m30['lower']}", fill=(30,144,255,200))
-
-        # ─── S&D Base Zone ────────────────────────
-        if sd_base and sd_base.get("found"):
-            base_color = (0,200,83,60) if bias == "BUY" else (255,76,76,60)
-            base_border = (0,200,83,200) if bias == "BUY" else (255,76,76,200)
-            y_bh = price_to_y(sd_base["base_high"])
-            y_bl = price_to_y(sd_base["base_low"])
-            draw.rectangle([(0, y_bh), (w, y_bl)], fill=base_color)
-            draw.line([(0, y_bh), (w, y_bh)], fill=base_border, width=1)
-            draw.line([(0, y_bl), (w, y_bl)], fill=base_border, width=1)
-            y_bm = price_to_y(sd_base["base_mid"])
-            draw.text((8, y_bm-8), f"{sd_base['type']} Zone", fill=base_border)
-
-        # ─── S&R Levels ───────────────────────────
-        for lvl in sr_levels:
-            y_sr = price_to_y(lvl)
-            draw.line([(0, y_sr), (w, y_sr)], fill=(255,215,0,150), width=1)
-            draw.text((w-120, y_sr-12), f"S&R {lvl}", fill=(255,215,0,200))
-
-        # ─── Price Line ───────────────────────────
-        y_price = price_to_y(price)
-        draw.line([(0, y_price), (w, y_price)], fill=(255,215,0,230), width=2)
-        draw.rectangle([(w-110, y_price-12), (w, y_price+4)], fill=(255,215,0,200))
-        draw.text((w-108, y_price-11), f"${price}", fill=(0,0,0,255))
-
-        # ─── Signal Label ─────────────────────────
-        stars_str = "★" * stars + "☆" * (4-stars)
-        sig_color = (0,200,83,230) if bias == "BUY" else (255,76,76,230)
-        sig_txt = f"{'▲ BUY' if bias == 'BUY' else '▼ SELL'}  {stars_str}"
-        draw.rectangle([(10, 50), (200, 80)], fill=(0,0,0,180))
-        draw.text((14, 54), sig_txt, fill=sig_color)
-
-        # Merge overlay
-        out = Image.alpha_composite(img, overlay).convert("RGB")
-        out.save(img_path)
-        log.info("Overlay anotasi selesai")
-        return img_path
-
-    except Exception as e:
-        log.error(f"Overlay error: {e}")
-        return img_path
-
-def generate_chart(bias, stars, tf="5", ch_h4=None, ch_m30=None,
-                   sd_base=None, sr_levels=None, price=None):
-    """Screenshot TradingView + overlay anotasi ZEMETHOD."""
-    import asyncio
-    path = asyncio.run(take_screenshot(tf))
-    if path and ch_h4 and ch_m30 and price:
-        path = overlay_annotations(path, ch_h4, ch_m30,
-                                   sd_base, sr_levels or [], price, bias, stars)
-    return path
 
 # ══════════════════════════════════════════════════════════════════
 #  TELEGRAM
@@ -651,32 +659,35 @@ def send_telegram(caption, photo_path=None, chat_id=None):
         return False
 
 # ══════════════════════════════════════════════════════════════════
-#  FORMAT PESAN SINYAL
+#  FORMAT PESAN
 # ══════════════════════════════════════════════════════════════════
 
 def format_signal_msg(price, bias, stars, star_reasons, sd_base,
                       m1_trigger, sr_flip, sl_tp, rsi_m15,
                       session, ch_h4, ch_m30, force=False):
     stars_display = "★" * stars + "☆" * (4 - stars)
-    trigger_txt = f"`{m1_trigger['type']} ({m1_trigger['strength']})`" \
-                  if m1_trigger.get("found") else "`Belum muncul`"
-    flip_txt = f"`{sr_flip['detail']}`" if sr_flip.get("confirmed") else "`Belum flip`"
-    base_txt = (
+    signal_emoji  = "🔴 SELL" if bias == "SELL" else "🟢 BUY"
+    trigger_txt   = f"`{m1_trigger['type']} ({m1_trigger['strength']})`" \
+                    if m1_trigger.get("found") else "`Belum muncul`"
+    flip_txt      = f"`{sr_flip['detail']}`" \
+                    if sr_flip.get("confirmed") else "`Belum flip`"
+    base_txt      = (
         f"`{sd_base['type']} — {sd_base['candles_in_base']} candle`\n"
         f"   Zone: `{sd_base['base_low']} - {sd_base['base_high']}`"
     ) if sd_base and sd_base.get("found") else "`Tidak terdeteksi`"
     rsi_label = (
-        "Overbought" if rsi_m15 >= 70 else "Near OB" if rsi_m15 >= 65 else
-        "Oversold"   if rsi_m15 <= 30 else "Near OS"  if rsi_m15 <= 35 else "Netral"
+        "⚠️ Overbought" if rsi_m15 >= 70 else "🔶 Near OB" if rsi_m15 >= 65 else
+        "⚠️ Oversold"   if rsi_m15 <= 30 else "🔷 Near OS" if rsi_m15 <= 35 else "➖ Netral"
     )
     reasons_str = "\n".join([f"  {r}" for r in star_reasons])
-    header = "FORCE ENTRY (Manual Override)" if force else "ZEXLY METHOD — SINYAL ENTRY"
-    rr_warn = f"\n   ⚠️ RR rendah ({sl_tp['rr1']}:1) — manage risk!" \
-              if sl_tp and sl_tp["rr1"] < 1.5 else ""
-    signal_emoji = "🔴 SELL" if bias == "SELL" else "🟢 BUY"
+    header      = "⚡ *FORCE ENTRY (Manual Override)*" if force else "🦅 *ZEXLY METHOD — SINYAL ENTRY*"
+    rr_warn     = f"\n   ⚠️ RR rendah ({sl_tp['rr1']}:1) — manage risk!" \
+                  if sl_tp["rr1"] < 1.5 else ""
+    ch_mode     = ch_h4.get("mode", "auto")
+    manual_tag  = " _(manual)_" if ch_h4.get("manual") else f" _{ch_mode}_"
 
     return (
-        f"*{header}*\n"
+        f"{header}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"📍 *Instrument:* XAUUSD\n"
         f"💰 *Price:* `${price}`\n"
@@ -685,28 +696,89 @@ def format_signal_msg(price, bias, stars, star_reasons, sd_base,
         f"📡 *Sesi:* {session}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"📊 *ANALISA ZEMETHOD*\n\n"
-        f"🏗️ *H4 Channel*\n"
-        f"  Upper: `{ch_h4['upper']}` | Mid: `{ch_h4['mid']}` | Lower: `{ch_h4['lower']}`\n"
-        f"  Bias: `{bias} ONLY`\n\n"
+        f"🏗️ *H4 Channel*{manual_tag}\n"
+        f"   Upper: `{ch_h4['upper']}` | Mid: `{ch_h4['mid']}` | Lower: `{ch_h4['lower']}`\n"
+        f"   Bias: `{bias} ONLY`\n\n"
         f"📐 *M30 Channel*\n"
-        f"  Upper: `{ch_m30['upper']}` | Lower: `{ch_m30['lower']}`\n\n"
+        f"   Upper: `{ch_m30['upper']}` | Lower: `{ch_m30['lower']}`\n\n"
         f"🎯 *S&D Base:* {base_txt}\n\n"
         f"🔀 *S&R Flip M5:* {flip_txt}\n\n"
         f"🕯️ *Trigger M1:* {trigger_txt}\n\n"
         f"📈 *RSI M30:* `{rsi_m15}` — {rsi_label}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"💼 *RENCANA TRADE*\n\n"
-        f"  Entry : `${price}`\n"
-        f"  SL    : `${sl_tp['sl']}` ({sl_tp['risk_pips']} pips)\n"
-        f"  TP1   : `${sl_tp['tp1']}` (RR `{sl_tp['rr1']}:1`) → tutup 70%\n"
-        f"  TP2   : `${sl_tp['tp2']}` (RR `{sl_tp['rr2']}:1`) → sisa 30%{rr_warn}\n\n"
-        f"  TP1 hit → geser SL ke breakeven!\n"
+        f"   Entry : `${price}`\n"
+        f"   SL    : `${sl_tp['sl']}` ({sl_tp['risk_pips']} pips)\n"
+        f"   TP1   : `${sl_tp['tp1']}` (RR `{sl_tp['rr1']}:1`) → tutup 70%\n"
+        f"   TP2   : `${sl_tp['tp2']}` (RR `{sl_tp['rr2']}:1`) → sisa 30%{rr_warn}\n\n"
+        f"   TP1 hit → geser SL ke breakeven!\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"✅ *ALASAN:*\n{reasons_str}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"⏰ Konfirmasi visual M1 sebelum entry!\n"
         f"`{get_waktu()}`"
     )
+
+# ══════════════════════════════════════════════════════════════════
+#  DAILY SUMMARY
+# ══════════════════════════════════════════════════════════════════
+
+def send_daily_summary():
+    now = datetime.now(WIB)
+    # Kirim summary jam 14:00 WIB (London open)
+    if now.hour != 14 or now.minute > 5:
+        return
+
+    state = load_json(STATE_FILE)
+    if state.get("summary_date") == now.strftime("%Y-%m-%d"):
+        return  # Udah kirim hari ini
+
+    data = fetch_data()
+    if not data: return
+
+    price     = round(float(data["m1"]["Close"].iloc[-1]), 2)
+    manual_ch = load_manual_channel()
+    ch_h4     = manual_ch if manual_ch else calc_auto_channel(data["h4"])
+    ch_m30    = calc_auto_channel(data["m30"])
+    bias      = get_h4_bias(ch_h4, price)
+    rsi       = calc_rsi(data["m30"]["Close"])
+    sr_levels = find_sr_levels(data["m30"])
+    _, session = get_session_status()
+
+    bias_emoji = "🔴 SELL ONLY" if bias == "SELL" else "🟢 BUY ONLY" if bias == "BUY" else "⏸ SKIP (Middle Zone)"
+    ch_mode    = "manual" if ch_h4.get("manual") else ch_h4.get("mode", "auto")
+    sr_txt     = " | ".join([f"`{lv}`" for lv in sr_levels]) if sr_levels else "`Tidak ada`"
+
+    near_news, news_title = is_near_news(60)
+    news_txt = f"⚠️ News dalam 1 jam: _{news_title}_" if near_news else "✅ Tidak ada high impact news"
+
+    msg = (
+        f"🌅 *ZEXLY DAILY SUMMARY*\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"📅 {now.strftime('%A, %d %b %Y')}\n"
+        f"💰 Price: `${price}`\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"🏗️ *H4 Channel* _{ch_mode}_\n"
+        f"   Upper: `{ch_h4['upper']}` | Lower: `{ch_h4['lower']}`\n"
+        f"   Upper Zone: > `{ch_h4['upper_third']}`\n"
+        f"   Lower Zone: < `{ch_h4['lower_third']}`\n\n"
+        f"⚡ *Bias Hari Ini:* {bias_emoji}\n\n"
+        f"📐 *M30 Channel*\n"
+        f"   Upper: `{ch_m30['upper']}` | Lower: `{ch_m30['lower']}`\n\n"
+        f"🎯 *Level S&R Penting:* {sr_txt}\n\n"
+        f"📈 *RSI M30:* `{rsi}`\n\n"
+        f"{news_txt}\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"Fokus trading: *London 14:00-19:00* & *NY 20:00-23:00 WIB*\n"
+        f"`{get_waktu()}`"
+    )
+
+    chart = generate_chart("M30")
+    send_telegram(msg, chart)
+
+    state["summary_date"] = now.strftime("%Y-%m-%d")
+    save_json(STATE_FILE, state)
+    log.info("Daily summary terkirim")
 
 # ══════════════════════════════════════════════════════════════════
 #  COMMAND HANDLER
@@ -716,11 +788,37 @@ def get_telegram_updates(offset=0):
     try:
         resp = requests.get(
             f"https://api.telegram.org/bot{TOKEN}/getUpdates",
-            params={"offset": offset, "timeout": 5},
-            timeout=10
+            params={"offset": offset, "timeout": 5}, timeout=10
         )
         return resp.json().get("result", [])
     except Exception: return []
+
+def do_scan(data, bias, ch_h4, ch_m30, price, force=False):
+    """Jalanin scan dan return caption + chart."""
+    rsi      = calc_rsi(data["m30"]["Close"])
+    sd_base  = detect_sd_base(data["m30"], bias) if bias != "SKIP" else None
+    sr_lvls  = find_sr_levels(data["m30"])
+    sr_flip  = check_sr_flip_m5(data["m5"], sr_lvls, bias) if bias != "SKIP" else {"confirmed": False}
+    trigger  = detect_m1_trigger(data["m1"], bias) if bias != "SKIP" else {"found": False}
+    _, session = get_session_status()
+
+    if bias == "SKIP" and not force:
+        return (
+            f"⏸ *SCAN RESULT*\n"
+            f"💰 Price: `${price}`\n"
+            f"Bias H4: `SKIP` — Middle Zone, tidak trading\n"
+            f"`{get_waktu()}`"
+        ), None
+
+    stars, reasons = calc_star_rating(bias, sd_base, sr_flip, trigger, ch_m30, price)
+    if force: reasons.append("⚡ Dikirim via /force (manual override)")
+
+    sl_tp   = calc_sl_tp(price, bias, sd_base, sr_lvls, ch_m30)
+    caption = format_signal_msg(price, bias, stars, reasons, sd_base,
+                                trigger, sr_flip, sl_tp, rsi,
+                                session, ch_h4, ch_m30, force=force)
+    chart   = generate_chart("M5")
+    return caption, chart
 
 def handle_commands():
     offset  = load_offset()
@@ -733,122 +831,154 @@ def handle_commands():
         msg = update.get("message") or update.get("channel_post")
         if not msg: continue
 
-        text    = msg.get("text", "").strip().lower()
+        text    = msg.get("text", "").strip()
+        cmd     = text.lower().split()[0] if text else ""
         chat_id = str(msg["chat"]["id"])
-        log.info(f"Command: '{text}' dari {chat_id}")
+        log.info(f"Command: '{cmd}' dari {chat_id}")
 
-        if text in ("/chart", "/scan", "/force"):
-            send_telegram("🔍 Mengambil data... tunggu sebentar", chat_id=chat_id)
-            data = fetch_data()
-            if not data:
-                send_telegram("❌ Gagal ambil data market.", chat_id=chat_id)
-                continue
-
-            price    = round(float(data["m1"]["Close"].iloc[-1]), 2)
-            ch_h4    = calc_equidistant_channel(data["h4"])
-            ch_m30   = calc_equidistant_channel(data["m30"])
-            bias     = get_h4_bias(ch_h4, price)
-            rsi      = calc_rsi(data["m30"]["Close"])
-            sd_base  = detect_sd_base(data["m30"], bias) if bias != "SKIP" else None
-            sr_lvls  = find_sr_levels(data["m30"])
-            sr_flip  = check_sr_flip_m5(data["m5"], sr_lvls, bias) if bias != "SKIP" else {"confirmed": False}
-            trigger  = detect_m1_trigger(data["m1"], bias) if bias != "SKIP" else {"found": False}
-            _, session = get_session_status()
-
-            if text == "/chart":
-                # Chart M30 realtime
-                tf_bias = "30"
-                chart = generate_chart(bias, 0, tf=tf_bias)
-                caption = (
-                    f"📊 *XAUUSD M30 — REALTIME*\n"
-                    f"💰 Price: `${price}` | Bias: `{bias}`\n"
-                    f"📡 Sesi: {session}\n"
-                    f"H4 Upper: `{ch_h4['upper']}` | Lower: `{ch_h4['lower']}`\n"
-                    f"`{get_waktu()}`"
-                )
-                send_telegram(caption, chart, chat_id=chat_id)
-
-            elif text == "/scan":
-                if bias == "SKIP":
-                    send_telegram(
-                        f"*SCAN RESULT*\n💰 Price: `${price}`\nBias H4: `SKIP` (Middle Zone)\n`{get_waktu()}`",
-                        chat_id=chat_id
-                    )
-                    continue
-                stars, reasons = calc_star_rating(bias, sd_base, sr_flip, trigger, ch_m30, price)
-                sl_tp   = calc_sl_tp(price, bias, sd_base, sr_lvls, ch_m30)
-                caption = format_signal_msg(price, bias, stars, reasons, sd_base,
-                                            trigger, sr_flip, sl_tp, rsi, session, ch_h4, ch_m30)
-                chart = generate_chart(bias, stars, tf="5", ch_h4=ch_h4, ch_m30=ch_m30, sd_base=sd_base, sr_levels=sr_levels, price=price)
-                send_telegram(caption, chart, chat_id=chat_id)
-
-            elif text == "/force":
-                force_bias = bias if bias != "SKIP" else "SELL"
-                if bias == "SKIP":
-                    reasons = ["⚠️ Forced — Middle Zone (tidak ideal)"]
-                    stars   = 0
-                else:
-                    stars, reasons = calc_star_rating(bias, sd_base, sr_flip, trigger, ch_m30, price)
-                    reasons.append("⚡ Dikirim via /force (manual override)")
-                sl_tp   = calc_sl_tp(price, force_bias, sd_base, sr_lvls, ch_m30)
-                caption = format_signal_msg(price, force_bias, stars, reasons, sd_base,
-                                            trigger, sr_flip, sl_tp, rsi, session,
-                                            ch_h4, ch_m30, force=True)
-                chart = generate_chart(force_bias, stars, tf="5", ch_h4=ch_h4, ch_m30=ch_m30, sd_base=sd_base, sr_levels=sr_lvls, price=price)
-                send_telegram(caption, chart, chat_id=chat_id)
-
-        elif text.startswith("/setchannel"):
+        # ─── /setchannel ──────────────────────────────
+        if cmd == "/setchannel":
             parts = text.split()
             if len(parts) != 4:
                 send_telegram(
-                    "*Format salah!*\n\n"
-                    "Gunakan: `/setchannel [p1] [p2] [p3]`\n\n"
-                    "Contoh 2 upper 1 lower:\n"
-                    "`/setchannel 4920 4880 4660`\n\n"
-                    "Contoh 1 upper 2 lower:\n"
-                    "`/setchannel 4920 4700 4660`",
+                    "*Format:* `/setchannel [p1] [p2] [p3]`\n\n"
+                    "Contoh 2 upper 1 lower:\n`/setchannel 4920 4880 4660`\n\n"
+                    "Contoh 1 upper 2 lower:\n`/setchannel 4920 4700 4660`",
                     chat_id=chat_id
                 )
                 continue
             try:
-                p1 = float(parts[1])
-                p2 = float(parts[2])
-                p3 = float(parts[3])
+                p1, p2, p3 = float(parts[1]), float(parts[2]), float(parts[3])
                 ch = calc_channel_from_3points(p1, p2, p3)
                 save_manual_channel(ch)
-                msg = (
-                    f"*CHANNEL DISIMPAN*\n"
+                send_telegram(
+                    f"✅ *CHANNEL DISIMPAN*\n"
                     f"Mode: `{ch['mode']}`\n"
-                    f"Upper: `{ch['upper']}`\n"
-                    f"Mid  : `{ch['mid']}`\n"
-                    f"Lower: `{ch['lower']}`\n"
+                    f"Upper: `{ch['upper']}` | Mid: `{ch['mid']}` | Lower: `{ch['lower']}`\n"
                     f"Upper Zone: > `{ch['upper_third']}`\n"
-                    f"Lower Zone: < `{ch['lower_third']}`\n"
-                    f"Bot pakai channel ini untuk semua sinyal."
+                    f"Lower Zone: < `{ch['lower_third']}`\n\n"
+                    f"Bot pakai channel ini sampai lu update lagi.",
+                    chat_id=chat_id
                 )
-                send_telegram(msg, chat_id=chat_id)
             except ValueError:
-                send_telegram("Angka tidak valid. Contoh: `/setchannel 4920 4880 4660`",
+                send_telegram("❌ Angka tidak valid. Contoh: `/setchannel 4920 4880 4660`",
                               chat_id=chat_id)
 
-        elif text == "/status":
-            price = None
-            try:
-                df = yf.Ticker("GC=F").history(period="1d", interval="1m")
-                price = round(float(df["Close"].iloc[-1]), 2)
-            except Exception: pass
-            ok_session, session = get_session_status()
+        # ─── /delchannel ──────────────────────────────
+        elif cmd == "/delchannel":
+            delete_manual_channel()
+            send_telegram(
+                "🗑️ *Channel manual dihapus.*\n"
+                "Bot kembali pakai auto detect parallel channel.",
+                chat_id=chat_id
+            )
+
+        # ─── /scan & /force ───────────────────────────
+        elif cmd in ("/scan", "/force"):
+            send_telegram("🔍 Scanning... tunggu sebentar", chat_id=chat_id)
+            data = fetch_data()
+            if not data:
+                send_telegram("❌ Gagal ambil data market.", chat_id=chat_id)
+                continue
+            price     = round(float(data["m1"]["Close"].iloc[-1]), 2)
+            manual_ch = load_manual_channel()
+            ch_h4     = manual_ch if manual_ch else calc_auto_channel(data["h4"])
+            ch_m30    = calc_auto_channel(data["m30"])
+            bias      = get_h4_bias(ch_h4, price)
+            force     = cmd == "/force"
+            if force and bias == "SKIP":
+                bias = "SELL"  # default ke SELL kalau middle zone
+            caption, chart = do_scan(data, bias, ch_h4, ch_m30, price, force=force)
+            send_telegram(caption, chart, chat_id=chat_id)
+            # Save position untuk monitoring TP/SL
+            if force or True:
+                try:
+                    sl_tp = calc_sl_tp(price, bias,
+                                       detect_sd_base(data["m30"], bias),
+                                       find_sr_levels(data["m30"]), ch_m30)
+                    save_position(bias, price, sl_tp["sl"], sl_tp["tp1"], sl_tp["tp2"])
+                except Exception: pass
+
+        # ─── /chart ───────────────────────────────────
+        elif cmd == "/chart":
+            parts = text.split()
+            tf    = parts[1].upper() if len(parts) > 1 else "M30"
+            if tf not in INTERVAL_MAP:
+                send_telegram(f"TF tidak valid. Pilihan: {', '.join(INTERVAL_MAP.keys())}",
+                              chat_id=chat_id)
+                continue
+            send_telegram(f"📸 Mengambil chart {tf}...", chat_id=chat_id)
+            price = get_current_price()
+            chart = generate_chart(tf)
+            caption = (
+                f"📊 *XAUUSD {tf} — Realtime*\n"
+                f"💰 Price: `${price}`\n"
+                f"`{get_waktu()}`"
+            )
+            send_telegram(caption, chart, chat_id=chat_id)
+
+        # ─── /summary ─────────────────────────────────
+        elif cmd == "/summary":
+            data = fetch_data()
+            if not data:
+                send_telegram("❌ Gagal ambil data.", chat_id=chat_id)
+                continue
+            price     = round(float(data["m1"]["Close"].iloc[-1]), 2)
+            manual_ch = load_manual_channel()
+            ch_h4     = manual_ch if manual_ch else calc_auto_channel(data["h4"])
+            ch_m30    = calc_auto_channel(data["m30"])
+            bias      = get_h4_bias(ch_h4, price)
+            rsi       = calc_rsi(data["m30"]["Close"])
+            sr_levels = find_sr_levels(data["m30"])
+            bias_emoji = "🔴 SELL ONLY" if bias == "SELL" else "🟢 BUY ONLY" if bias == "BUY" else "⏸ SKIP"
+            ch_mode    = "manual" if ch_h4.get("manual") else ch_h4.get("mode", "auto")
+            sr_txt     = " | ".join([f"`{lv}`" for lv in sr_levels]) if sr_levels else "`Tidak ada`"
+            near_news, news_title = is_near_news(60)
+            news_txt = f"⚠️ News: _{news_title}_" if near_news else "✅ Tidak ada high impact news"
+            msg = (
+                f"📊 *ZEXLY SUMMARY*\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"💰 Price: `${price}`\n"
+                f"⚡ Bias: {bias_emoji}\n\n"
+                f"🏗️ *H4 Channel* _{ch_mode}_\n"
+                f"   Upper: `{ch_h4['upper']}` | Lower: `{ch_h4['lower']}`\n\n"
+                f"📐 *M30 Channel*\n"
+                f"   Upper: `{ch_m30['upper']}` | Lower: `{ch_m30['lower']}`\n\n"
+                f"🎯 *S&R:* {sr_txt}\n"
+                f"📈 *RSI M30:* `{rsi}`\n"
+                f"{news_txt}\n"
+                f"`{get_waktu()}`"
+            )
+            chart = generate_chart("M30")
+            send_telegram(msg, chart, chat_id=chat_id)
+
+        # ─── /status ──────────────────────────────────
+        elif cmd == "/status":
+            price     = get_current_price()
+            ok_ses, session = get_session_status()
+            manual_ch = load_manual_channel()
+            ch_mode   = "manual" if manual_ch else "auto"
+            pos       = load_position()
+            pos_txt   = (
+                f"📌 Posisi aktif: `{pos['bias']}` entry `${pos['entry']}`\n"
+                f"   SL: `${pos['sl']}` | TP1: `${pos['tp1']}` | TP2: `${pos['tp2']}`"
+            ) if pos and pos.get("bias") else "📌 Tidak ada posisi aktif"
             send_telegram(
                 f"📊 *ZEXLY STATUS*\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
                 f"💰 Harga: `${price or 'N/A'}`\n"
                 f"📡 Sesi: {session}\n"
-                f"🟢 Trading: {'AKTIF' if ok_session else 'OFF'}\n"
+                f"🟢 Trading: {'AKTIF' if ok_ses else 'OFF'}\n"
+                f"🏗️ Channel: `{ch_mode}`\n"
+                f"{pos_txt}\n"
                 f"`{get_waktu()}`\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
-                f"`/chart` — chart M30 realtime\n"
+                f"`/setchannel p1 p2 p3` — set channel\n"
+                f"`/delchannel` — hapus channel manual\n"
                 f"`/scan` — scan manual\n"
                 f"`/force` — sinyal paksa\n"
+                f"`/chart [tf]` — chart (M1/M5/M15/M30/H1/H4)\n"
+                f"`/summary` — ringkasan market\n"
                 f"`/status` — status bot",
                 chat_id=chat_id
             )
@@ -858,25 +988,42 @@ def handle_commands():
 # ══════════════════════════════════════════════════════════════════
 
 def run_scan():
-    log.info("═══ ZEXLY SCAN ═══")
+    log.info("═══ ZEXLY SCAN v3.0 ═══")
 
+    # Cek command
     handle_commands()
 
+    # Cek TP/SL hit
+    price_now = get_current_price()
+    if price_now:
+        check_tp_sl_hit(price_now)
+
+    # Daily summary jam 14:00 WIB
+    send_daily_summary()
+
+    # Cek jam trading
     ok_session, session_name = get_session_status()
     if not ok_session:
         log.info(f"Off-session: {session_name}. Skip scan.")
         return
 
+    # Cek news filter
+    near_news, news_title = is_near_news(30)
+    if near_news:
+        log.info(f"High impact news: {news_title}. Skip scan.")
+        return
+
+    # Fetch data
     data = fetch_data()
     if not data: return
 
-    price    = round(float(data["m1"]["Close"].iloc[-1]), 2)
+    price     = round(float(data["m1"]["Close"].iloc[-1]), 2)
     manual_ch = load_manual_channel()
-    ch_h4    = manual_ch if manual_ch else calc_equidistant_channel(data["h4"])
-    ch_m30   = calc_equidistant_channel(data["m30"])
-    bias     = get_h4_bias(ch_h4, price)
+    ch_h4     = manual_ch if manual_ch else calc_auto_channel(data["h4"])
+    ch_m30    = calc_auto_channel(data["m30"])
+    bias      = get_h4_bias(ch_h4, price)
 
-    log.info(f"Price: {price} | Bias: {bias} | Upper: {ch_h4['upper']} | Lower: {ch_h4['lower']}")
+    log.info(f"Price: {price} | Bias: {bias} | Channel: {ch_h4.get('mode','?')} | Upper: {ch_h4['upper']} | Lower: {ch_h4['lower']}")
 
     if bias == "SKIP":
         log.info("Middle zone — SKIP")
@@ -889,13 +1036,13 @@ def run_scan():
     m1_trigger = detect_m1_trigger(data["m1"], bias)
     stars, star_reasons = calc_star_rating(bias, sd_base, sr_flip, m1_trigger, ch_m30, price)
 
-    log.info(f"Stars: {stars}/4 | Base: {sd_base} | Trigger: {m1_trigger}")
+    log.info(f"Stars: {stars}/4 | Base: {bool(sd_base)} | Trigger: {m1_trigger.get('type','none')}")
 
     if stars < 3:
         log.info(f"Bintang {stars}/4 — belum cukup. Skip.")
         return
 
-    signal_key = f"{bias}_{round(price, 0)}_{stars}"
+    signal_key = f"{bias}_{round(price, -1)}_{stars}"
     if already_alerted(signal_key):
         log.info("Sinyal sama sudah dikirim. Skip.")
         return
@@ -904,11 +1051,12 @@ def run_scan():
     caption = format_signal_msg(price, bias, stars, star_reasons, sd_base,
                                 m1_trigger, sr_flip, sl_tp, rsi_m15,
                                 session_name, ch_h4, ch_m30)
-    chart   = generate_chart(bias, stars, tf="5", ch_h4=ch_h4, ch_m30=ch_m30, sd_base=sd_base, sr_levels=sr_levels, price=price)
+    chart   = generate_chart("M5")
 
     send_telegram(caption, chart)
     mark_alerted(signal_key)
-    log.info(f"Sinyal {bias} {stars} bintang terkirim!")
+    save_position(bias, price, sl_tp["sl"], sl_tp["tp1"], sl_tp["tp2"])
+    log.info(f"Sinyal {bias} {stars}★ terkirim!")
 
 
 if __name__ == "__main__":

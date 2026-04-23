@@ -15,19 +15,20 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Restore offset cache
+      - name: Restore cache
         uses: actions/cache@v3
         with:
           path: |
             tg_offset.json
             zexly_channel.json
-          key: tg-offset-${{ github.run_id }}
-          restore-keys: tg-offset-
+            zexly_position.json
+            zexly_state.json
+          key: zexly-cache-${{ github.run_id }}
+          restore-keys: zexly-cache-
 
       - name: Install Dependencies
         run: |
-          pip install requests yfinance pytz numpy pandas python-dotenv tzdata matplotlib Pillow playwright
-          playwright install chromium
+          pip install requests yfinance pytz numpy pandas python-dotenv tzdata matplotlib
 
       - name: Run Script
         env:
@@ -37,10 +38,12 @@ jobs:
           ZEXLY_CHANNEL: ${{ secrets.ZEXLY_CHANNEL }}
         run: python zexly_vision.py
 
-      - name: Save offset cache
+      - name: Save cache
         uses: actions/cache@v3
         with:
           path: |
             tg_offset.json
             zexly_channel.json
-          key: tg-offset-${{ github.run_id }}
+            zexly_position.json
+            zexly_state.json
+          key: zexly-cache-${{ github.run_id }}
