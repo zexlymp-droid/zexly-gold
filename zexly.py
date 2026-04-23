@@ -398,7 +398,7 @@ def format_signal_msg(price, bias, stars, reasons, sd_base,
     rsi_label    = "⚠️ OB" if rsi>=70 else "🔶 Near OB" if rsi>=65 else "⚠️ OS" if rsi<=30 else "🔷 Near OS" if rsi<=35 else "➖ Netral"
     reasons_str  = "\n".join([f"  {r}" for r in reasons])
     rr_warn      = f"\n   ⚠️ RR rendah ({sl_tp['rr1']}:1)" if sl_tp["rr1"]<1.5 else ""
-    ch_tag       = " _(manual)_" if ch_h4.get("manual") else f" _{ch_h4.get('mode','auto')}_"
+    ch_tag = " (manual)" if ch_h4.get("manual") else f" [{ch_h4.get('mode','auto')}]"
 
     return (
         f"{header}\n"
