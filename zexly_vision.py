@@ -600,32 +600,42 @@ def calc_sl_tp(price, bias, sd_base, sr_levels, ch_m30):
 # ══════════════════════════════════════════════════════════════════
 
 INTERVAL_MAP = {
-    "M1": "1m", "M5": "5m", "M15": "15m",
-    "M30": "30m", "H1": "1h", "H4": "4h"
+    "M1": "1", "M5": "5", "M15": "15",
+    "M30": "30", "H1": "60", "H4": "240"
 }
 
 def generate_chart(tf="M5"):
-    if not CHARTIMG_KEY:
-        log.warning("CHARTIMG_KEY tidak ada")
-        return None
-    interval = INTERVAL_MAP.get(tf.upper(), "5m")
+    """Screenshot TradingView via Playwright."""
+    import asyncio
+    from playwright.async_api import async_playwright
+
+    interval = INTERVAL_MAP.get(tf.upper(), "5")
     path = f"zexly_chart_{tf}.png"
-    try:
-        url = "https://api.chart-img.com/v1/tradingview/advanced-chart"
-        params = {
-            "symbol": "OANDA:XAUUSD", "interval": interval,
-            "theme": "dark", "studies": "RSI@tv-basicstudies",
-            "width": 800, "height": 500, "key": CHARTIMG_KEY,
-        }
-        resp = requests.get(url, params=params, timeout=30)
-        if resp.status_code == 200 and "image" in resp.headers.get("content-type", ""):
-            with open(path, "wb") as f:
-                f.write(resp.content)
-            log.info(f"Chart {tf} tersimpan")
+
+    async def _screenshot():
+        url = (
+            f"https://s.tradingview.com/widgetembed/"
+            f"?symbol=OANDA:XAUUSD&interval={interval}"
+            f"&theme=dark&style=1&locale=id"
+            f"&toolbar_bg=%23131722"
+        )
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                ctx = await browser.new_context(viewport={"width": 1280, "height": 720})
+                page = await ctx.new_page()
+                await page.goto(url, wait_until="networkidle", timeout=30000)
+                await asyncio.sleep(6)
+                await page.screenshot(path=path)
+                await browser.close()
+            log.info(f"Screenshot {tf} tersimpan")
             return path
-        else:
-            log.error(f"chart-img {resp.status_code}: {resp.text[:100]}")
+        except Exception as e:
+            log.error(f"Screenshot error: {e}")
             return None
+
+    try:
+        return asyncio.run(_screenshot())
     except Exception as e:
         log.error(f"Chart error: {e}")
         return None
