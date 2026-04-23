@@ -66,6 +66,16 @@ def load_offset():
 def save_offset(offset):
     with open(OFFSET_FILE, "w") as f: json.dump({"offset": offset}, f)
 def load_manual_channel():
+    # Prioritas 1: dari env variable ZEXLY_CHANNEL (format: "upper,mid_or_p2,lower")
+    env_ch = os.getenv("ZEXLY_CHANNEL", "")
+    if env_ch:
+        try:
+            parts = [float(x) for x in env_ch.split(",")]
+            if len(parts) == 3:
+                return calc_channel_from_3points(parts[0], parts[1], parts[2])
+        except Exception:
+            pass
+    # Prioritas 2: dari file lokal
     try:
         with open(CHANNEL_FILE) as f:
             return json.load(f)
