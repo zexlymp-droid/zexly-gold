@@ -1,0 +1,8 @@
+python-telegram-bot[job-queue]
+yfinance
+numpy
+pandas
+pytz
+requests
+python-dotenv
+tzdata
