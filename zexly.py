@@ -373,6 +373,8 @@ def generate_chart(tf="M5", entry=None, sl=None, tp1=None, tp2=None, sr_levels=N
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         import matplotlib.lines as mlines
+        import matplotlib.patches as mpatches
+        import matplotlib.ticker as mticker
 
         tf_up = tf.upper()
         period, interval = TF_YFINANCE.get(tf_up, ("3d", "5m"))
@@ -383,39 +385,121 @@ def generate_chart(tf="M5", entry=None, sl=None, tp1=None, tp2=None, sr_levels=N
         df.dropna(inplace=True)
         if tf_up == "H4":
             df = df.resample("4h").agg({"Open":"first","High":"max","Low":"min","Close":"last","Volume":"sum"}).dropna()
-        df = df.tail(80)
+        df = df.tail(150)
         path = f"zexly_chart_{tf}.png"
 
-        mc = mpf.make_marketcolors(up="#26a69a",down="#ef5350",edge="inherit",wick="inherit",volume={"up":"#26a69a","down":"#ef5350"})
-        style = mpf.make_mpf_style(marketcolors=mc,base_mpf_style="nightclouds",gridstyle="--",gridcolor="#2a2a2a",facecolor="#131722",figcolor="#131722",rc={"axes.labelcolor":"#d1d4dc","xtick.color":"#d1d4dc","ytick.color":"#d1d4dc"})
+        # Hitung EMA
+        ema20 = df["Close"].ewm(span=20, adjust=False).mean()
+        ema50 = df["Close"].ewm(span=50, adjust=False).mean()
+
+        # Style TradingView-like
+        mc = mpf.make_marketcolors(
+            up="#26a69a", down="#ef5350",
+            edge={"up":"#26a69a","down":"#ef5350"},
+            wick={"up":"#26a69a","down":"#ef5350"},
+            volume={"up":"#26a69a88","down":"#ef535088"}
+        )
+        style = mpf.make_mpf_style(
+            marketcolors=mc,
+            base_mpf_style="nightclouds",
+            gridstyle=":",
+            gridcolor="#1e2130",
+            facecolor="#131722",
+            figcolor="#0e1117",
+            rc={
+                "axes.labelcolor":"#787b86",
+                "xtick.color":"#787b86",
+                "ytick.color":"#787b86",
+                "xtick.labelsize": 9,
+                "ytick.labelsize": 9,
+                "axes.edgecolor": "#2a2e39",
+                "font.family": "monospace"
+            }
+        )
 
         apds = []
-        if entry:    apds.append(mpf.make_addplot([entry]*len(df), color="#00bcd4", linestyle="--", width=1.5, secondary_y=False))
-        if sl:       apds.append(mpf.make_addplot([sl]*len(df),    color="#ef5350", linestyle="--", width=1.5, secondary_y=False))
-        if tp1:      apds.append(mpf.make_addplot([tp1]*len(df),   color="#26a69a", linestyle="--", width=1.2, secondary_y=False))
-        if tp2:      apds.append(mpf.make_addplot([tp2]*len(df),   color="#66bb6a", linestyle=":",  width=1.2, secondary_y=False))
+        # EMA lines
+        apds.append(mpf.make_addplot(ema20, color="#f9ca24", width=1.2, secondary_y=False))
+        apds.append(mpf.make_addplot(ema50, color="#6c5ce7", width=1.2, secondary_y=False))
+
+        # Signal lines
+        if entry: apds.append(mpf.make_addplot([entry]*len(df), color="#00bcd4", linestyle="--", width=1.2, secondary_y=False))
+        if sl:    apds.append(mpf.make_addplot([sl]*len(df),    color="#ef5350", linestyle="--", width=1.2, secondary_y=False))
+        if tp1:   apds.append(mpf.make_addplot([tp1]*len(df),   color="#26a69a", linestyle="--", width=1.0, secondary_y=False))
+        if tp2:   apds.append(mpf.make_addplot([tp2]*len(df),   color="#66bb6a", linestyle=":",  width=1.0, secondary_y=False))
         if sr_levels:
             for lv in sr_levels:
-                apds.append(mpf.make_addplot([lv]*len(df), color="#ff9800", linestyle="-", width=0.8, secondary_y=False))
+                apds.append(mpf.make_addplot([lv]*len(df), color="#ff9800", linestyle="-", width=0.7, alpha=0.6, secondary_y=False))
 
-        plot_kwargs = dict(type="candle", style=style, title=f" XAUUSD {tf_up}",
-                           ylabel="Price (USD)", volume=True, figsize=(12,7), returnfig=True)
-        if apds: plot_kwargs["addplot"] = apds
-        fig, axes = mpf.plot(df, **plot_kwargs)
-        ax = axes[0]
+        fig, axes = mpf.plot(
+            df, type="candle", style=style,
+            addplot=apds,
+            volume=True,
+            figsize=(16, 9),
+            returnfig=True,
+            tight_layout=False,
+            scale_padding={"left":0.1,"right":0.8,"top":0.3,"bottom":0.5}
+        )
 
+        ax  = axes[0]
+        axv = axes[2] if len(axes) > 2 else None
+
+        # S&D zone shading
         if sd_base and sd_base.get("found"):
-            ax.axhspan(sd_base["base_low"], sd_base["base_high"], alpha=0.15, color="#ff9800")
-            ax.axhline(sd_base["base_mid"], color="#ff9800", linestyle="-", linewidth=0.8, alpha=0.6)
+            color_zone = "#26a69a" if sd_base.get("type","").startswith("R") else "#ef5350"
+            ax.axhspan(sd_base["base_low"], sd_base["base_high"], alpha=0.12, color=color_zone, zorder=0)
+            ax.axhline(sd_base["base_mid"], color=color_zone, linestyle="-", linewidth=0.8, alpha=0.5)
+            ax.axhline(sd_base["base_high"], color=color_zone, linestyle="-", linewidth=0.5, alpha=0.4)
+            ax.axhline(sd_base["base_low"],  color=color_zone, linestyle="-", linewidth=0.5, alpha=0.4)
 
-        legend_items = []
-        if entry: legend_items.append(mlines.Line2D([],[],color="#00bcd4",linestyle="--",label=f"Entry {entry}"))
-        if sl:    legend_items.append(mlines.Line2D([],[],color="#ef5350",linestyle="--",label=f"SL {sl}"))
-        if tp1:   legend_items.append(mlines.Line2D([],[],color="#26a69a",linestyle="--",label=f"TP1 {tp1}"))
-        if tp2:   legend_items.append(mlines.Line2D([],[],color="#66bb6a",linestyle=":",label=f"TP2 {tp2}"))
-        if legend_items: ax.legend(handles=legend_items, loc="upper left", fontsize=8, framealpha=0.3)
+        # Label harga di kanan (kayak TradingView)
+        def add_price_label(ax, price, color, label, linestyle="--"):
+            ax.axhline(price, color=color, linestyle=linestyle, linewidth=1.0, alpha=0.8)
+            xlim = ax.get_xlim()
+            ax.text(xlim[1] + 0.3, price, f" {label}
+ {price}", color=color,
+                    fontsize=7.5, va="center", ha="left",
+                    bbox=dict(boxstyle="round,pad=0.2", facecolor="#0e1117", edgecolor=color, alpha=0.8))
 
-        plt.savefig(path, dpi=120, bbox_inches="tight", facecolor="#131722")
+        if entry: add_price_label(ax, entry, "#00bcd4", "ENTRY")
+        if sl:    add_price_label(ax, sl,    "#ef5350", "SL")
+        if tp1:   add_price_label(ax, tp1,   "#26a69a", "TP1")
+        if tp2:   add_price_label(ax, tp2,   "#66bb6a", "TP2", ":")
+
+        # Legend EMA + signal
+        legend_items = [
+            mlines.Line2D([],[],color="#f9ca24", linewidth=1.2, label="EMA 20"),
+            mlines.Line2D([],[],color="#6c5ce7", linewidth=1.2, label="EMA 50"),
+        ]
+        if sd_base and sd_base.get("found"):
+            color_zone = "#26a69a" if sd_base.get("type","").startswith("R") else "#ef5350"
+            legend_items.append(mpatches.Patch(color=color_zone, alpha=0.3, label=f"S&D {sd_base.get('type','')}"))
+        ax.legend(handles=legend_items, loc="upper left", fontsize=8,
+                  framealpha=0.15, facecolor="#131722", edgecolor="#2a2e39",
+                  labelcolor="white")
+
+        # Title custom
+        last_price = float(df["Close"].iloc[-1])
+        bias_txt   = ""
+        if entry and sl:
+            bias_txt = "  🟢 BUY" if entry < sl else "  🔴 SELL"
+        ax.set_title(
+            f"XAUUSD {tf_up}  |  ${last_price:.2f}{bias_txt}  |  ZEXINFO",
+            color="#d1d4dc", fontsize=12, fontweight="bold", pad=10,
+            loc="left"
+        )
+
+        # Watermark
+        fig.text(0.5, 0.5, "ZEXINFO", fontsize=52, color="#ffffff",
+                 alpha=0.03, ha="center", va="center", fontweight="bold",
+                 rotation=25, transform=ax.transAxes)
+
+        # Volume label
+        if axv:
+            axv.set_ylabel("Volume", color="#787b86", fontsize=8)
+
+        plt.subplots_adjust(left=0.05, right=0.88, top=0.93, bottom=0.08)
+        plt.savefig(path, dpi=150, bbox_inches=None, facecolor="#0e1117")
         plt.close(fig)
         log.info(f"Chart {tf_up} generated: {path}")
         return path
