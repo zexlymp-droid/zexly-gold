@@ -493,8 +493,7 @@ def generate_chart(tf="M5", entry=None, sl=None, tp1=None, tp2=None, sr_levels=N
         def add_price_label(ax, price, color, label, linestyle="--"):
             ax.axhline(price, color=color, linestyle=linestyle, linewidth=1.0, alpha=0.8)
             xlim = ax.get_xlim()
-            ax.text(xlim[1] + 0.3, price, f" {label}
- {price}", color=color,
+            ax.text(xlim[1] + 0.3, price, f" {label} | {price}", color=color,
                     fontsize=7.5, va="center", ha="left",
                     bbox=dict(boxstyle="round,pad=0.2", facecolor="#0e1117", edgecolor=color, alpha=0.8))
 
