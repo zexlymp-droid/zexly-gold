@@ -35,6 +35,7 @@ TOKEN        = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID      = os.getenv("TELEGRAM_CHAT_ID", "")
 BROADCAST_IDS = ["-1003986432270", "8706271896"]
 CHARTIMG_KEY = os.getenv("CHARTIMG_KEY", "")
+TWELVEDATA_KEY = os.getenv("TWELVEDATA_KEY", "")
 ZEXLY_CH_ENV = os.getenv("ZEXLY_CHANNEL", "")
 WIB          = pytz.timezone("Asia/Jakarta")
 
@@ -116,18 +117,53 @@ def delete_manual_channel():
 #  DATA & ANALISA
 # ══════════════════════════════════════════════════════════════════
 
+def _td_fetch(interval, outputsize=150):
+    """Ambil OHLCV dari Twelve Data — realtime"""
+    try:
+        resp = requests.get(
+            "https://api.twelvedata.com/time_series",
+            params={
+                "symbol": "XAU/USD",
+                "interval": interval,
+                "outputsize": outputsize,
+                "apikey": TWELVEDATA_KEY,
+                "format": "JSON",
+                "timezone": "UTC"
+            }, timeout=15
+        )
+        data = resp.json()
+        if "values" not in data:
+            log.error(f"Twelve Data error ({interval}): {data.get('message','unknown')}")
+            return None
+        rows = data["values"]
+        df = pd.DataFrame(rows)
+        df = df.rename(columns={
+            "datetime": "Datetime",
+            "open": "Open", "high": "High",
+            "low": "Low", "close": "Close",
+            "volume": "Volume"
+        })
+        df["Datetime"] = pd.to_datetime(df["Datetime"])
+        df = df.set_index("Datetime").sort_index()
+        for col in ["Open","High","Low","Close"]:
+            df[col] = df[col].astype(float)
+        df["Volume"] = df.get("Volume", pd.Series([0]*len(df))).astype(float)
+        df.dropna(inplace=True)
+        return df
+    except Exception as e:
+        log.error(f"Twelve Data fetch error ({interval}): {e}")
+        return None
+
 def fetch_data():
     try:
-        gold   = yf.Ticker("GC=F")
-        df_h4  = gold.history(period="2mo",  interval="1h")
-        df_m30 = gold.history(period="10d",  interval="30m")
-        df_m5  = gold.history(period="3d",   interval="5m")
-        df_m1  = gold.history(period="1d",   interval="1m")
+        df_h4  = _td_fetch("4h",  outputsize=120)
+        df_m30 = _td_fetch("30min", outputsize=150)
+        df_m5  = _td_fetch("5min",  outputsize=150)
+        df_m1  = _td_fetch("1min",  outputsize=100)
         for label, df in [("H4",df_h4),("M30",df_m30),("M5",df_m5),("M1",df_m1)]:
             if df is None or df.empty:
                 log.warning(f"Data {label} kosong")
                 return None
-            df.dropna(inplace=True)
         return {"h4": df_h4, "m30": df_m30, "m5": df_m5, "m1": df_m1}
     except Exception as e:
         log.error(f"Gagal fetch: {e}")
@@ -135,8 +171,10 @@ def fetch_data():
 
 def get_current_price():
     try:
-        df = yf.Ticker("GC=F").history(period="1d", interval="1m")
-        return round(float(df["Close"].iloc[-1]), 2)
+        df = _td_fetch("1min", outputsize=1)
+        if df is not None and not df.empty:
+            return round(float(df["Close"].iloc[-1]), 2)
+        return None
     except Exception: return None
 
 def find_swings(arr, order=5):
