@@ -67,8 +67,8 @@ def get_session_status():
     now = datetime.now(WIB)
     t   = now.hour * 60 + now.minute
     if 14*60 <= t < 18*60:   return True,  "London Open (TERBAIK)"
+    elif 18*60 <= t < 20*60: return False, "NY-London Overlap (HINDARI)"
     elif 20*60 <= t < 23*60: return True,  "New York Session (BAIK)"
-    elif 19*60 <= t < 20*60: return False, "NY-London Overlap (HINDARI)"
     elif 3*60  <= t < 11*60: return False, "Asian Session (HINDARI)"
     else:                     return False, "Off-Session"
 
@@ -518,7 +518,7 @@ def generate_chart(tf="M5", entry=None, sl=None, tp1=None, tp2=None, sr_levels=N
         last_price = float(df["Close"].iloc[-1])
         bias_txt   = ""
         if entry and sl:
-            bias_txt = "  🟢 BUY" if entry < sl else "  🔴 SELL"
+            bias_txt = "  🟢 BUY" if entry > sl else "  🔴 SELL"
         ax.set_title(
             f"XAUUSD {tf_up}  |  ${last_price:.2f}{bias_txt}  |  ZEXINFO",
             color="#d1d4dc", fontsize=12, fontweight="bold", pad=10,
