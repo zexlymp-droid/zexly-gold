@@ -66,10 +66,11 @@ def get_waktu():
 def get_session_status():
     now = datetime.now(WIB)
     t   = now.hour * 60 + now.minute
-    if 14*60 <= t < 19*60:   return True,  "London Open (TERBAIK)"
+    if 14*60 <= t < 18*60:   return True,  "London Open (TERBAIK)"
     elif 20*60 <= t < 23*60: return True,  "New York Session (BAIK)"
-    elif 19*60 <= t < 20*60: return True,  "NY-London Overlap (HATI-HATI)"
-    else:                     return False, "Asian / Off-Session"
+    elif 19*60 <= t < 20*60: return False, "NY-London Overlap (HINDARI)"
+    elif 3*60  <= t < 11*60: return False, "Asian Session (HINDARI)"
+    else:                     return False, "Off-Session"
 
 # ══════════════════════════════════════════════════════════════════
 #  CHANNEL
@@ -308,45 +309,81 @@ def detect_m1_trigger(df_m1, bias):
     return {"found": False}
 
 def calc_star_rating(bias_h4, sd_base, sr_flip, m1_trigger, ch_m30, price):
+    """
+    Sistem bintang sesuai ZEXLY Method ebook:
+    ★1 — Searah bias H4 channel
+    ★2 — Base valid di level S&R M30 (RBR/DBD terkonfirmasi)
+    ★3 — Candle M5 sudah close konfirmasi (S&R flip valid)
+    ★4 — Ada candle trigger jelas di M1 (Engulfing/Pin Bar)
+    Minimal 3/4 bintang untuk entry
+    """
     stars, reasons = 0, []
+
+    # Bintang 1 — Searah bias H4
     stars += 1
     reasons.append(f"★ Searah bias H4 ({bias_h4})")
+
+    # Bintang 2 — Base RBR/DBD valid di S&R M30
     if sd_base and sd_base.get("found"):
         stars += 1
-        reasons.append(f"★ Pola {sd_base['type']} valid ({sd_base['candles_in_base']} candle)")
+        reasons.append(f"★ Base {sd_base['type']} valid ({sd_base['candles_in_base']} candle) di S&R M30")
+
+    # Bintang 3 — Candle M5 close konfirmasi (S&R flip)
     if sr_flip.get("confirmed"):
         stars += 1
-        reasons.append(f"★ S&R Flip M5: {sr_flip['detail']}")
-    elif sd_base and sd_base.get("found"):
-        if bias_h4=="BUY" and price<=sd_base["base_high"]:
-            stars += 1; reasons.append("★ Harga masuk zona base RBR")
-        elif bias_h4=="SELL" and price>=sd_base["base_low"]:
-            stars += 1; reasons.append("★ Harga masuk zona base DBD")
+        reasons.append(f"★ M5 close konfirmasi: {sr_flip['detail']}")
+
+    # Bintang 4 — Candle trigger M1 jelas
     if m1_trigger.get("found"):
         stars += 1
         reasons.append(f"★ Trigger M1: {m1_trigger['type']} ({m1_trigger['strength']})")
+
     return stars, reasons
 
 def calc_sl_tp(price, bias, sd_base, sr_levels, ch_m30):
-    buffer, min_tp1 = 7.0, 20.0
+    """
+    SL: di luar base + 5-7 pips buffer, total max ~15 pips (sesuai ebook)
+    TP1: S&R berikutnya, min RR 1:1.5
+    TP2: tepi channel M30, min RR 1:3
+    """
+    buffer  = 6.0   # 5-7 pips buffer sesuai ebook
+    max_sl  = 15.0  # max SL ~15 pips sesuai ebook
+    min_rr1 = 1.5   # RR minimum sesuai ebook
+
     if bias == "BUY":
-        sl_base = sd_base["base_low"] if sd_base and sd_base.get("found") else price-15
-        sl = round(sl_base-buffer, 2)
-        risk = abs(price-sl)
-        tp1_c = [lv for lv in sr_levels if lv > price+min_tp1]
-        tp1 = round(min(tp1_c),2) if tp1_c else round(price+max(risk*1.5,min_tp1),2)
-        tp2 = round(ch_m30["upper"],2)
-        if tp2 <= tp1: tp2 = round(price+risk*3,2)
+        sl_base = sd_base["base_low"] if sd_base and sd_base.get("found") else price - max_sl
+        sl      = round(sl_base - buffer, 2)
+        risk    = abs(price - sl)
+        if risk > max_sl:
+            sl   = round(price - max_sl, 2)
+            risk = max_sl
+
+        min_tp1_dist = risk * min_rr1
+        tp1_c = [lv for lv in sr_levels if lv > price + min_tp1_dist]
+        tp1   = round(min(tp1_c), 2) if tp1_c else round(price + risk * min_rr1, 2)
+
+        tp2 = round(ch_m30["upper"], 2)
+        if tp2 <= tp1 or abs(tp2 - price) < risk * 3:
+            tp2 = round(price + risk * 3, 2)
+
     else:
-        sl_base = sd_base["base_high"] if sd_base and sd_base.get("found") else price+15
-        sl = round(sl_base+buffer, 2)
-        risk = abs(sl-price)
-        tp1_c = [lv for lv in sr_levels if lv < price-min_tp1]
-        tp1 = round(max(tp1_c),2) if tp1_c else round(price-max(risk*1.5,min_tp1),2)
-        tp2 = round(ch_m30["lower"],2)
-        if tp2 >= tp1: tp2 = round(price-risk*3,2)
-    rr1 = round(abs(tp1-price)/risk,2) if risk>0 else 0
-    rr2 = round(abs(tp2-price)/risk,2) if risk>0 else 0
+        sl_base = sd_base["base_high"] if sd_base and sd_base.get("found") else price + max_sl
+        sl      = round(sl_base + buffer, 2)
+        risk    = abs(sl - price)
+        if risk > max_sl:
+            sl   = round(price + max_sl, 2)
+            risk = max_sl
+
+        min_tp1_dist = risk * min_rr1
+        tp1_c = [lv for lv in sr_levels if lv < price - min_tp1_dist]
+        tp1   = round(max(tp1_c), 2) if tp1_c else round(price - risk * min_rr1, 2)
+
+        tp2 = round(ch_m30["lower"], 2)
+        if tp2 >= tp1 or abs(tp2 - price) < risk * 3:
+            tp2 = round(price - risk * 3, 2)
+
+    rr1 = round(abs(tp1 - price) / risk, 2) if risk > 0 else 0
+    rr2 = round(abs(tp2 - price) / risk, 2) if risk > 0 else 0
     return {"sl":sl,"tp1":tp1,"tp2":tp2,"risk_pips":round(risk,1),"rr1":rr1,"rr2":rr2}
 
 # ══════════════════════════════════════════════════════════════════
@@ -580,20 +617,65 @@ async def broadcast(bot, caption, chart=None):
 #  AUTO SCAN
 # ══════════════════════════════════════════════════════════════════
 
+# Tracking sinyal terakhir untuk hindari duplikat
+_last_signal = {"bias": None, "price": None, "stars": 0}
+
 async def auto_scan(context: ContextTypes.DEFAULT_TYPE):
+    global _last_signal
     ok_ses, session = get_session_status()
     if not ok_ses:
         log.info(f"Auto scan skip — {session}")
         return
+
     log.info("Auto scan running...")
-    caption, chart = await do_full_scan(force=False)
-    if not caption:
+    data = fetch_data()
+    if not data: return
+
+    price     = round(float(data["m1"]["Close"].iloc[-1]), 2)
+    manual_ch = load_manual_channel()
+    ch_h4     = manual_ch if manual_ch else calc_auto_channel(data["h4"])
+    ch_m30    = calc_auto_channel(data["m30"])
+    bias      = get_h4_bias(ch_h4, price)
+
+    if bias == "SKIP":
+        log.info("Auto scan: middle zone, skip")
         return
-    # Kirim semua sinyal (termasuk 1 star) sebagai notifikasi
-    if "SKIP" in caption and "Middle Zone" in caption:
-        log.info("Auto scan: bias SKIP, tidak kirim sinyal")
+
+    sd_base = detect_sd_base(data["m30"], bias)
+    sr_lvls = find_sr_levels(data["m30"])
+    sr_flip = check_sr_flip_m5(data["m5"], sr_lvls, bias)
+    trigger = detect_m1_trigger(data["m1"], bias)
+    stars, reasons = calc_star_rating(bias, sd_base, sr_flip, trigger, ch_m30, price)
+
+    # Filter: minimal 3 bintang sesuai ebook
+    if stars < 3:
+        log.info(f"Auto scan: {stars} bintang — skip (min 3)")
         return
+
+    # Anti duplikat: skip kalau sinyal sama dengan sebelumnya
+    price_diff = abs(price - (_last_signal["price"] or 0))
+    if _last_signal["bias"] == bias and _last_signal["stars"] == stars and price_diff < 5:
+        log.info("Auto scan: sinyal duplikat, skip")
+        return
+
+    _last_signal = {"bias": bias, "price": price, "stars": stars}
+
+    sl_tp   = calc_sl_tp(price, bias, sd_base, sr_lvls, ch_m30)
+
+    # Validasi RR minimum 1:1.5
+    if sl_tp["rr1"] < 1.5:
+        log.info(f"Auto scan: RR {sl_tp['rr1']} < 1.5, skip")
+        return
+
+    _, session = get_session_status()
+    rsi     = calc_rsi(data["m30"]["Close"])
+    caption = format_signal_msg(price, bias, stars, reasons, sd_base,
+                                trigger, sr_flip, sl_tp, rsi, session, ch_h4, ch_m30)
+    chart   = generate_chart("M5", entry=price, sl=sl_tp["sl"],
+                             tp1=sl_tp["tp1"], tp2=sl_tp["tp2"],
+                             sr_levels=sr_lvls, sd_base=sd_base)
     await broadcast(context.bot, caption, chart)
+    log.info(f"Auto scan: sinyal {stars}★ {bias} dikirim")
 
 # ══════════════════════════════════════════════════════════════════
 #  CORE SCAN
