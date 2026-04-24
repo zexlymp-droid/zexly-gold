@@ -33,6 +33,7 @@ load_dotenv()
 
 TOKEN        = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID      = os.getenv("TELEGRAM_CHAT_ID", "")
+BROADCAST_IDS = ["-1003986432270", "8706271896"]
 CHARTIMG_KEY = os.getenv("CHARTIMG_KEY", "")
 ZEXLY_CH_ENV = os.getenv("ZEXLY_CHANNEL", "")
 WIB          = pytz.timezone("Asia/Jakarta")
@@ -474,6 +475,43 @@ def format_signal_msg(price, bias, stars, reasons, sd_base,
     )
 
 # ══════════════════════════════════════════════════════════════════
+#  BROADCAST
+# ══════════════════════════════════════════════════════════════════
+
+async def broadcast(bot, caption, chart=None):
+    targets = BROADCAST_IDS
+    if CHAT_ID and CHAT_ID not in targets:
+        targets = [CHAT_ID] + targets
+    for cid in targets:
+        try:
+            if chart and os.path.exists(chart):
+                with open(chart, "rb") as ph:
+                    await bot.send_photo(chat_id=cid, photo=ph, caption=caption, parse_mode="Markdown")
+            else:
+                await bot.send_message(chat_id=cid, text=caption, parse_mode="Markdown")
+        except Exception as e:
+            log.error(f"Broadcast ke {cid} gagal: {e}")
+
+# ══════════════════════════════════════════════════════════════════
+#  AUTO SCAN
+# ══════════════════════════════════════════════════════════════════
+
+async def auto_scan(context: ContextTypes.DEFAULT_TYPE):
+    ok_ses, session = get_session_status()
+    if not ok_ses:
+        log.info(f"Auto scan skip — {session}")
+        return
+    log.info("Auto scan running...")
+    caption, chart = await do_full_scan(force=False)
+    if not caption:
+        return
+    # Kirim semua sinyal (termasuk 1 star) sebagai notifikasi
+    if "SKIP" in caption and "Middle Zone" in caption:
+        log.info("Auto scan: bias SKIP, tidak kirim sinyal")
+        return
+    await broadcast(context.bot, caption, chart)
+
+# ══════════════════════════════════════════════════════════════════
 #  CORE SCAN
 # ══════════════════════════════════════════════════════════════════
 
@@ -574,9 +612,7 @@ async def monitor_tp_sl(context: ContextTypes.DEFAULT_TYPE):
             f"Entry: `${entry}` | Now: `${price}`\n"
             f"`{get_waktu()}`"
         )
-        await context.bot.send_message(
-            chat_id=CHAT_ID, text=msg, parse_mode="Markdown"
-        )
+        await broadcast(context.bot, msg)
         save_json(POSITION_FILE, pos)
         if pos.get("sl_hit") or pos.get("tp2_hit"):
             try: os.remove(POSITION_FILE)
@@ -844,6 +880,8 @@ if __name__ == "__main__":
 
     # TP/SL monitor tiap 30 detik
     app.job_queue.run_repeating(monitor_tp_sl, interval=30, first=10)
+    # Auto scan tiap 5 menit saat sesi aktif
+    app.job_queue.run_repeating(auto_scan, interval=300, first=60)
 
     # Commands
     app.add_handler(CommandHandler("start",      cmd_start))
